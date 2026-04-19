@@ -17,7 +17,7 @@ lostark.bible  →  scraper.py  →  sheets.py  →  BOZO BOZONGOS (Google Sheet
 
 1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" row)
 2. For each player, it visits their lostark.bible roster page and pulls all characters
-3. Characters are filtered by the iLvl threshold in the tab name (e.g. `Serca (1740+)` → 1740 minimum)
+3. Characters are filtered by the iLvl threshold (and optional cap) — derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
 4. Each player's eligible characters are sorted by iLvl descending, then combat power descending, capped at 6
 5. Results are written to columns B–G, one character per cell, formatted as:
    ```
@@ -132,14 +132,25 @@ Tabs must follow the pattern `Name (iLvl+)` for the iLvl threshold to be detecte
 
 Examples: `Serca (1740+)`, `Kazeros (1620+)`
 
-To override a threshold without renaming a tab, add an entry to `config.json`:
+To override a threshold without renaming a tab, add an entry to `config.json`. Three forms are supported:
+
 ```json
 {
   "overrides": {
-    "Serca (1740+)": 1750
+    "Serca (1740+)": 1750,
+    "Hard Serca (1730+)": { "threshold": 1730 },
+    "Hard Serca (1730+)": { "threshold": 1730, "cap": 1739 }
   }
 }
 ```
+
+| Form | Effect |
+|------|--------|
+| `1750` (plain number) | Threshold = 1750, no cap |
+| `{ "threshold": 1750 }` | Same as above, object form |
+| `{ "threshold": 1730, "cap": 1739 }` | Threshold = 1730 **and** cap = 1739 — only characters with iLvl in [1730, 1739] are included |
+
+The `cap` field is useful when a raid tier has both a hard floor and a ceiling — for example a "Hard" mode that only accepts characters who have not yet hit the next tier's minimum.
 
 ---
 

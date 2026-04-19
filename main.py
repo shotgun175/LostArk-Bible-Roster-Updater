@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from config import load_overrides, get_threshold
+from config import load_overrides, get_threshold_and_cap
 from scraper import scrape_roster, filter_and_sort, MAX_CHARS_PER_PLAYER
 from sheets import (
     get_spreadsheet,
@@ -26,6 +26,7 @@ def process_player_for_sheet(
     character_name: str,
     tab_name: str,
     threshold: int,
+    cap: int | None = None,
 ) -> list:
     """Scrape and filter one player's roster for a specific sheet tab."""
     print(f"Scraping {nickname} ({character_name})...", flush=True, end=" ")
@@ -36,14 +37,16 @@ def process_player_for_sheet(
         print(f"\n{e}")
         return []
 
-    eligible = filter_and_sort(all_chars, threshold)
-    total_eligible_before_cap = len([c for c in all_chars if c.ilvl >= threshold])
+    eligible = filter_and_sort(all_chars, threshold, cap)
+    total_eligible_before_display_cap = len(
+        [c for c in all_chars if c.ilvl >= threshold and (cap is None or c.ilvl <= cap)]
+    )
 
     print(f"{len(all_chars)} characters found, {len(eligible)} eligible for '{tab_name}'")
 
-    if total_eligible_before_cap > MAX_CHARS_PER_PLAYER:
+    if total_eligible_before_display_cap > MAX_CHARS_PER_PLAYER:
         print(
-            f"  Warning: {nickname} has {total_eligible_before_cap} eligible characters "
+            f"  Warning: {nickname} has {total_eligible_before_display_cap} eligible characters "
             f"for '{tab_name}' but only {MAX_CHARS_PER_PLAYER} will be shown (cap reached)."
         )
 
@@ -61,16 +64,18 @@ def run_update(
 ) -> None:
     """Run the full update pipeline for the given tabs and players."""
     for tab_name in tab_names:
-        threshold = get_threshold(tab_name, overrides)
-        if threshold is None:
+        result = get_threshold_and_cap(tab_name, overrides)
+        if result is None:
             print(f"Skipping '{tab_name}' — could not parse iLvl threshold from tab name.")
             continue
+        threshold, cap = result
 
-        print(f"\n--- Updating '{tab_name}' (threshold: {threshold}) ---")
+        range_label = f"{threshold}–{cap}" if cap is not None else f"{threshold}+"
+        print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
         player_eligibility: dict[str, list] = {}
         for nickname, character_name in player_map.items():
-            eligible = process_player_for_sheet(nickname, character_name, tab_name, threshold)
+            eligible = process_player_for_sheet(nickname, character_name, tab_name, threshold, cap)
             player_eligibility[nickname] = eligible
 
         print("Writing to sheet...", flush=True, end=" ")

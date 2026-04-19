@@ -90,8 +90,12 @@ def scrape_roster(character_name: str) -> list[Character]:
             browser.close()
 
 
-def filter_and_sort(characters: list[Character], threshold: int) -> list[Character]:
-    """Filter by iLvl threshold, sort by iLvl desc then CP desc, cap at 6."""
-    eligible = [c for c in characters if c.ilvl >= threshold]
+def filter_and_sort(
+    characters: list[Character],
+    threshold: int,
+    cap: int | None = None,
+) -> list[Character]:
+    """Filter by iLvl threshold (and optional cap), sort by iLvl desc then CP desc, cap at 6."""
+    eligible = [c for c in characters if c.ilvl >= threshold and (cap is None or c.ilvl <= cap)]
     eligible.sort(key=lambda c: (c.ilvl, c.cp), reverse=True)
     return eligible[:MAX_CHARS_PER_PLAYER]

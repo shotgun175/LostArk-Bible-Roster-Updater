@@ -68,6 +68,38 @@ def test_filter_fewer_than_six_returns_all_eligible():
     assert len(result) == 3
 
 
+def test_filter_cap_excludes_characters_above_cap():
+    chars = [make_char("A", 1740), make_char("B", 1760), make_char("C", 1800)]
+    result = filter_and_sort(chars, threshold=1740, cap=1760)
+    names = [c.name for c in result]
+    assert "C" not in names
+    assert "A" in names
+    assert "B" in names
+
+
+def test_filter_cap_includes_characters_at_exact_cap():
+    chars = [make_char("A", 1760)]
+    result = filter_and_sort(chars, threshold=1740, cap=1760)
+    assert len(result) == 1
+
+
+def test_filter_cap_none_means_uncapped():
+    chars = [make_char("A", 1740), make_char("B", 9999)]
+    result = filter_and_sort(chars, threshold=1740, cap=None)
+    assert len(result) == 2
+
+
+def test_filter_cap_and_threshold_together():
+    chars = [
+        make_char("low", 1700),
+        make_char("in_range", 1750),
+        make_char("high", 1850),
+    ]
+    result = filter_and_sort(chars, threshold=1740, cap=1800)
+    names = [c.name for c in result]
+    assert names == ["in_range"]
+
+
 from scraper import _parse_roster_entry
 
 

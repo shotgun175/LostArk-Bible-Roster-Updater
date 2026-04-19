@@ -1,3 +1,5 @@
 {
-  "overrides": {}
+  "overrides": {
+    "Hard Serca (1730+)": {"threshold": 1730, "cap": 1739}
+  }
 }

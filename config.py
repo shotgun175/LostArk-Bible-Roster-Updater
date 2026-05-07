@@ -4,16 +4,26 @@ import re
 from pathlib import Path
 
 
-def load_overrides(path: str = "config.json") -> dict:
-    # Override values may be:
-    #   - an int (threshold only, no cap), e.g. 1750
-    #   - an object with "threshold" and optional "cap", e.g. {"threshold": 1750, "cap": 1800}
+def load_config(path: str = "config.json") -> dict:
+    """Read config.json. Returns {} when the file is missing.
+
+    Recognized top-level keys:
+      - "spreadsheet_name": str — name of the Google Sheet to update
+      - "priority_players": list[str] — players that always appear at the top
+      - "overrides":        dict   — per-tab iLvl threshold/cap overrides
+    """
     config_path = Path(path)
     if not config_path.exists():
         return {}
     with open(config_path) as f:
-        data = json.load(f)
-    return data.get("overrides", {})
+        return json.load(f)
+
+
+def load_overrides(path: str = "config.json") -> dict:
+    # Override values may be:
+    #   - an int (threshold only, no cap), e.g. 1750
+    #   - an object with "threshold" and optional "cap", e.g. {"threshold": 1750, "cap": 1800}
+    return load_config(path).get("overrides", {})
 
 
 def parse_threshold_from_tab(tab_name: str) -> int | None:
@@ -28,9 +38,9 @@ def get_threshold_and_cap(tab_name: str, overrides: dict) -> tuple[int, int | No
     """Return (threshold, cap) for a tab. cap is None when uncapped.
 
     Override format in config.json:
-      "Tab Name": 1750                          → threshold=1750, cap=None
-      "Tab Name": {"threshold": 1750}           → threshold=1750, cap=None
-      "Tab Name": {"threshold": 1750, "cap": 1800} → threshold=1750, cap=1800
+      "Tab Name": 1750                          -> threshold=1750, cap=None
+      "Tab Name": {"threshold": 1750}           -> threshold=1750, cap=None
+      "Tab Name": {"threshold": 1750, "cap": 1800} -> threshold=1750, cap=1800
     """
     if tab_name in overrides:
         value = overrides[tab_name]

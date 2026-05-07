@@ -1,6 +1,5 @@
-import pytest
 from models import Character
-from scraper import filter_and_sort
+from scraper import _parse_roster_entry, count_eligible, filter_and_sort
 
 MAX_ELIGIBLE = 6
 
@@ -100,8 +99,25 @@ def test_filter_cap_and_threshold_together():
     assert names == ["in_range"]
 
 
-from scraper import _parse_roster_entry
+# --- count_eligible ---
 
+def test_count_eligible_counts_all_at_or_above_threshold():
+    chars = [make_char("A", 1740), make_char("B", 1739), make_char("C", 1900)]
+    assert count_eligible(chars, threshold=1740, cap=None) == 2
+
+
+def test_count_eligible_respects_cap():
+    chars = [make_char("A", 1740), make_char("B", 1750), make_char("C", 1900)]
+    assert count_eligible(chars, threshold=1740, cap=1799) == 2
+
+
+def test_count_eligible_does_not_apply_display_cap():
+    # filter_and_sort caps at 6; count_eligible does not.
+    chars = [make_char(str(i), 1740) for i in range(10)]
+    assert count_eligible(chars, threshold=1740, cap=None) == 10
+
+
+# --- _parse_roster_entry ---
 
 def make_entry(name="Valslayer", kr_class="berserker_female", ilvl=1755.0, cp_score=5915.7):
     return {"name": name, "class": kr_class, "ilvl": ilvl, "combatPower": {"score": cp_score}}
@@ -111,7 +127,7 @@ def test_parse_roster_entry_valid():
     char = _parse_roster_entry(make_entry())
     assert char is not None
     assert char.name == "Valslayer"
-    assert char.char_class == "Slayer"   # berserker_female → Slayer
+    assert char.char_class == "Slayer"   # berserker_female -> Slayer
     assert char.ilvl == 1755              # float truncated to int
     assert char.cp == 5915.7
 

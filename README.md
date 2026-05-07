@@ -16,15 +16,15 @@ lostark.bible  →  scraper.py  →  sheets.py  →  BOZO BOZONGOS (Google Sheet
 **Step by step:**
 
 1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" row)
-2. For each player, it visits their lostark.bible roster page and pulls all characters
-3. Characters are filtered by the iLvl threshold (and optional cap) — derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
+2. Each player's lostark.bible roster page is scraped **once** up front — even when running `--all`, every player is fetched a single time
+3. For each target tab, the cached rosters are filtered by the iLvl threshold (and optional cap) — derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
 4. Each player's eligible characters are sorted by iLvl descending, then combat power descending, capped at 6
 5. Results are written to columns B–G, one character per cell, formatted as:
    ```
    CharName | iLvl
    ClassName | CP
    ```
-6. Players are sorted top-to-bottom by most eligible characters; ties broken by total combat power (higher investment = higher placement). Priority players (Valslayer, Mabi, Remi) always appear first regardless of count.
+6. Players are sorted top-to-bottom by most eligible characters; ties broken by total combat power (higher investment = higher placement). Priority players (configured via `priority_players` in `config.json` — currently Valslayer, Mabi, Remi) always appear first regardless of count.
 
 ---
 
@@ -136,6 +136,8 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
 
 ```json
 {
+  "spreadsheet_name": "BOZO BOZONGOS",
+  "priority_players": ["Valslayer", "Mabi", "Remi"],
   "overrides": {
     "Serca (1740+)": 1750,
     "Hard Serca (1730+)": { "threshold": 1730 },
@@ -143,6 +145,8 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
   }
 }
 ```
+
+`spreadsheet_name` and `priority_players` are also read from `config.json`. Both fall back to sensible defaults if absent (the default priority list is empty — i.e. no priority).
 
 | Form | Effect |
 |------|--------|
@@ -157,14 +161,14 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 ## Project structure
 
 ```
-main.py               CLI entry point — argument parsing, confirmation prompts, orchestration
-scraper.py            Playwright browser scraping + filter/sort logic
+main.py               CLI entry point — owns auth, Playwright lifetime, orchestration
+scraper.py            Roster scraping (takes a Page) + filter/sort/count logic
 sheets.py             Google Sheets read/write + rich text formatting
 class_map.py          KR internal class name → global NA class name (29 classes)
-config.py             Tab name threshold parsing + config.json loader
+config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
-tests/                Unit tests (36 passing)
-config.json           Optional threshold overrides (empty by default)
+tests/                Unit tests
+config.json           Spreadsheet name, priority players, threshold overrides
 credentials.json      Google service account key (gitignored)
 LostArk Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
 ```

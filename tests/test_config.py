@@ -1,6 +1,4 @@
-import pytest
-from pathlib import Path
-from config import load_overrides, parse_threshold_from_tab, get_threshold_and_cap
+from config import load_config, load_overrides, parse_threshold_from_tab, get_threshold_and_cap
 
 
 def test_parse_threshold_standard():
@@ -77,3 +75,22 @@ def test_load_overrides_empty_overrides(tmp_path):
     config_file.write_text('{"overrides": {}}')
     result = load_overrides(str(config_file))
     assert result == {}
+
+
+# --- load_config ---
+
+def test_load_config_missing_file(tmp_path):
+    assert load_config(str(tmp_path / "nope.json")) == {}
+
+
+def test_load_config_returns_full_object(tmp_path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        '{"spreadsheet_name": "X", "priority_players": ["A"], "overrides": {}}'
+    )
+    result = load_config(str(config_file))
+    assert result == {
+        "spreadsheet_name": "X",
+        "priority_players": ["A"],
+        "overrides": {},
+    }

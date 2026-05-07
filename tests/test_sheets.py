@@ -1,8 +1,7 @@
-import pytest
 from models import Character
 from sheets import format_cell, sort_players
 
-PRIORITY = ["Valluru", "Mabi", "Remi"]
+PRIORITY = ["Valslayer", "Mabi", "Remi"]
 
 
 def make_char(ilvl: int, cp: float = 5000.0) -> Character:
@@ -27,20 +26,20 @@ def test_format_cell_support_class():
 
 def test_priority_players_appear_first_in_order():
     eligibility = {
-        "Valluru": [make_char(1755)] * 6,
-        "Mabi":    [make_char(1755)] * 6,
-        "Remi":    [make_char(1755)] * 4,
-        "Other":   [make_char(1755)] * 5,
+        "Valslayer": [make_char(1755)] * 6,
+        "Mabi":      [make_char(1755)] * 6,
+        "Remi":      [make_char(1755)] * 4,
+        "Other":     [make_char(1755)] * 5,
     }
     result = sort_players(eligibility, PRIORITY)
-    assert result[:3] == ["Valluru", "Mabi", "Remi"]
+    assert result[:3] == ["Valslayer", "Mabi", "Remi"]
 
 
 def test_rest_sorted_by_eligible_count_descending():
     eligibility = {
-        "Valluru": [make_char(1755)] * 6,
-        "Mabi":    [make_char(1755)] * 6,
-        "Remi":    [make_char(1755)] * 4,
+        "Valslayer": [make_char(1755)] * 6,
+        "Mabi":      [make_char(1755)] * 6,
+        "Remi":      [make_char(1755)] * 4,
         "A": [make_char(1755)] * 2,
         "B": [make_char(1755)] * 5,
         "C": [make_char(1755)] * 3,
@@ -51,9 +50,9 @@ def test_rest_sorted_by_eligible_count_descending():
 
 def test_tie_broken_by_total_cp_descending():
     eligibility = {
-        "Valluru": [],
-        "Mabi":    [],
-        "Remi":    [],
+        "Valslayer": [],
+        "Mabi":      [],
+        "Remi":      [],
         "A": [make_char(1755, cp=4000.0), make_char(1750, cp=4000.0)],  # 2 chars, total CP 8000
         "B": [make_char(1755, cp=5000.0), make_char(1750, cp=5000.0)],  # 2 chars, total CP 10000
     }
@@ -64,22 +63,32 @@ def test_tie_broken_by_total_cp_descending():
 
 def test_priority_player_absent_from_data_is_skipped():
     eligibility = {
-        "Valluru": [make_char(1755)] * 3,
-        "Other":   [make_char(1755)] * 2,
+        "Valslayer": [make_char(1755)] * 3,
+        "Other":     [make_char(1755)] * 2,
     }
     result = sort_players(eligibility, PRIORITY)
-    assert result[0] == "Valluru"
+    assert result[0] == "Valslayer"
     assert "Mabi" not in result
     assert "Remi" not in result
 
 
 def test_player_with_zero_eligible_chars_sorts_last():
     eligibility = {
-        "Valluru": [],
-        "Mabi":    [],
-        "Remi":    [],
+        "Valslayer": [],
+        "Mabi":      [],
+        "Remi":      [],
         "A": [make_char(1755)] * 3,
         "B": [],
     }
     result = sort_players(eligibility, PRIORITY)
     assert result[-1] == "B"
+
+
+def test_sort_players_no_priority_argument():
+    # Default priority is None / empty — sort purely by count then CP.
+    eligibility = {
+        "A": [make_char(1755)] * 2,
+        "B": [make_char(1755)] * 5,
+        "C": [make_char(1755)] * 3,
+    }
+    assert sort_players(eligibility) == ["B", "C", "A"]

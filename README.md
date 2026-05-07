@@ -7,10 +7,7 @@ Scrapes character rosters from [lostark.bible](https://lostark.bible) and writes
 ## How it all works together
 
 ```
-lostark.bible  →  scraper.py  →  sheets.py  →  BOZO BOZONGOS (Google Sheet)
-                                                        ↓
-                                              "Serca (1740+)" tab
-                                              Roster table + Run planner
+lostark.bible  →  scraper.py  →  sheets.py  →  Bozo Bozongos (Google Sheet)  →  "Serca (1740+)" tab  →  Roster table + Run planner
 ```
 
 **Step by step:**

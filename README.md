@@ -52,6 +52,14 @@ playwright install chromium
 
 `credentials.json` is gitignored and never committed.
 
+**4. Create your config file** — copy `config.example.json` to `config.json` and edit the values to match your spreadsheet:
+
+```
+copy config.example.json config.json
+```
+
+Set `spreadsheet_name` to your Google Sheet name, list any `priority_players` who should always sort to the top, and add `overrides` for tabs whose iLvl threshold doesn't match the tab name. `config.json` is gitignored — your personal config never gets committed.
+
 ---
 
 ## Running the tool
@@ -165,7 +173,8 @@ class_map.py          KR internal class name → global NA class name (29 classe
 config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests
-config.json           Spreadsheet name, priority players, threshold overrides
+config.example.json   Template config — copy to config.json and edit
+config.json           Spreadsheet name, priority players, threshold overrides (gitignored)
 credentials.json      Google service account key (gitignored)
 LostArk Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
 ```

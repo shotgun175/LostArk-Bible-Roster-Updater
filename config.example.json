@@ -1,0 +1,8 @@
+{
+  "spreadsheet_name": "Your Spreadsheet Name",
+  "priority_players": ["PlayerOne", "PlayerTwo"],
+  "overrides": {
+    "Serca (1740+)": 1750,
+    "Hard Serca (1730+)": { "threshold": 1730, "cap": 1739 }
+  }
+}

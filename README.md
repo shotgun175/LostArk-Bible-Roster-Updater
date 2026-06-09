@@ -2,6 +2,8 @@
 
 Scrapes character rosters from [lostark.bible](https://lostark.bible) and writes each player's eligible characters to the **BOZO BOZONGOS** Google Sheet. Run it once before each raid week to keep everyone's roster current.
 
+Part of [Lost Ark Tools](https://shotgun175.github.io/) — see all tools.
+
 ---
 
 ## How it all works together

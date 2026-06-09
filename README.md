@@ -163,6 +163,37 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 
 ---
 
+## Assumptions, scope & open questions
+
+> Unofficial community tool — not affiliated with or endorsed by lostark.bible, Smilegate, or Amazon Games.
+
+### Confirmed assumptions
+
+- **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` finds the `roster: [ ... ]` array by regex + bracket-depth counting and evaluates that slice as a JS literal in the page context — there is no public/documented API to call.
+- **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
+- **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
+- **`config.json` covers the sheet name, priority players, and iLvl threshold/cap** — `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
+- **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write) and Drive (read-only).
+- **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A–G.
+
+### Open questions / known fragility
+
+- **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-counting inside lostark.bible's inline hydration script, then evaluating the slice as JS. Any change to their page structure, hydration format, the `roster` key name, or the entry shape will silently break scraping (it returns no characters, surfacing as "could not find roster" errors). There is no versioned contract to depend on — treat this as the primary maintenance risk.
+- **Class names map to a fixed set.** `class_map.py` translates KR internal class names to NA names for a known set of classes; a new or renamed class shows as `Unknown` until the map is updated.
+- **No region support beyond NA** (see above) without a code change.
+- **No retry/backoff.** A timeout or load error for one player is logged and that player is skipped (treated as an empty roster) for the run.
+- **Dependencies are version-pinned but not fully locked.** `requirements.txt` pins direct dependencies to known-good versions; transitive dependencies are not captured in a lockfile.
+
+### Scope (out)
+
+- Regions other than NA.
+- Reading the player list from anywhere other than the sheet's column A.
+- A stable API client (none is published by lostark.bible).
+- Unattended scheduling/automation — the tool is run manually before each raid week.
+- The sheet's run-planner formulas and layout — the tool only writes the roster table (columns A–G); everything below the "Run" row is owned by the spreadsheet itself.
+
+---
+
 ## Project structure
 
 ```

@@ -162,6 +162,9 @@ def rewrite_sheet_sorted(
     while len(rows) < num_rows:
         rows.append([""] * _ROW_WIDTH)
     # gspread 6: values first, range second (the old order is a deprecated shim).
+    # Relies on gspread's RAW value-input default: scraped character names are
+    # attacker-controllable via lostark.bible, so do NOT switch this to
+    # USER_ENTERED without sanitizing leading = + @ (formula injection).
     ws.update(rows, f"A{DATA_START_ROW}")
 
     rich_text_cells = _build_rich_text_cells(
@@ -198,6 +201,8 @@ def update_player_rows(
             {"range": f"B{row_num}:{_LAST_CHAR_COL}{row_num}", "values": [cells]}
         )
         rich_text_cells += [(row_num - 1, 1 + j, format_cell(c)) for j, c in enumerate(chars)]
+    # Same RAW value-input dependence as rewrite_sheet_sorted above: never
+    # switch to USER_ENTERED without sanitizing the scraped strings.
     ws.batch_update(cell_updates)
 
     _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)

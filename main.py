@@ -24,7 +24,7 @@ from sheets import (
 )
 
 CREDENTIALS_PATH = "credentials.json"
-DEFAULT_SPREADSHEET_NAME = "BOZO BOZONGOS"
+DEFAULT_SPREADSHEET_NAME = "Your Spreadsheet Name"  # override via config.json
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",

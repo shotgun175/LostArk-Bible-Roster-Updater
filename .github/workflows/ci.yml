@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main] # PR branches are covered by pull_request; bare push doubled every run
   pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:

@@ -1,4 +1,4 @@
-from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
+﻿from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
 from scraper import _parse_roster_entry, count_eligible, filter_and_sort
 
 
@@ -117,14 +117,14 @@ def test_count_eligible_does_not_apply_display_cap():
 
 # --- _parse_roster_entry ---
 
-def make_entry(name="Valslayer", kr_class="berserker_female", ilvl=1755.0, cp_score=5915.7):
+def make_entry(name="PlayerOne", kr_class="berserker_female", ilvl=1755.0, cp_score=5915.7):
     return {"name": name, "class": kr_class, "ilvl": ilvl, "combatPower": {"score": cp_score}}
 
 
 def test_parse_roster_entry_valid():
     char = _parse_roster_entry(make_entry())
     assert char is not None
-    assert char.name == "Valslayer"
+    assert char.name == "PlayerOne"
     assert char.char_class == "Slayer"   # berserker_female -> Slayer
     assert char.ilvl == 1755              # float truncated to int
     assert char.cp == 5915.7

@@ -138,7 +138,10 @@ def run_update(
 
         print_eligibility_for = rosters
         if len(player_names) > 1:
-            tab_list = tab_player_lists.get(tab_name) or player_names
+            # An explicit empty list means the tab's column A is empty: write
+            # nothing there (rewrite no-ops on zero rows) rather than falling
+            # back to the union and populating a deliberately empty tab.
+            tab_list = tab_player_lists[tab_name] if tab_name in tab_player_lists else player_names
             print_eligibility_for = {n: rosters.get(n, []) for n in tab_list}
         player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 

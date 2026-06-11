@@ -99,6 +99,10 @@ def _js_array_to_json(literal: str) -> str:
                 out.append(f'"{ident}"')
             elif ident == "undefined":
                 out.append("null")
+            elif ident == "void" and k < n and literal[k] == "0":
+                # The site's minifier emits `void 0` for undefined values.
+                out.append("null")
+                j = k + 1
             else:
                 out.append(ident)
             i = j

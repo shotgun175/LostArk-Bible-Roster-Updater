@@ -50,6 +50,37 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch):
     ]
 
 
+def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch):
+    """A tab whose column A is empty must not be back-filled with the union
+    list — the rewrite should receive an empty eligibility and no-op."""
+    monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
+
+    rewrites: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(
+        main,
+        "rewrite_sheet_sorted",
+        lambda spreadsheet, tab, eligibility, ordered, svc: rewrites.append(
+            (tab, sorted(eligibility.keys()))
+        ),
+    )
+
+    main.run_update(
+        page=None,
+        spreadsheet=MagicMock(),
+        sheets_service=MagicMock(),
+        tab_names=["Hard (1700+)", "Empty (1750+)"],
+        player_names=["Alice", "Bob"],
+        overrides={},
+        priority_players=[],
+        tab_player_lists={"Hard (1700+)": ["Alice", "Bob"], "Empty (1750+)": []},
+    )
+
+    assert rewrites == [
+        ("Hard (1700+)", ["Alice", "Bob"]),
+        ("Empty (1750+)", []),
+    ]
+
+
 def test_open_spreadsheet_missing_credentials_is_friendly(monkeypatch, capsys):
     def raise_missing(*args, **kwargs):
         raise FileNotFoundError("credentials.json")

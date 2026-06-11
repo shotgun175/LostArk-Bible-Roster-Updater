@@ -1,6 +1,9 @@
 """Data models for scraped Lost Ark characters."""
 from dataclasses import dataclass
 
+# Display cap: characters shown per player (sheet columns B.. derive from it).
+MAX_CHARS_PER_PLAYER = 6
+
 
 @dataclass
 class Character:

@@ -1,5 +1,7 @@
+from unittest.mock import MagicMock
+
 from models import Character
-from sheets import format_cell, sort_players
+from sheets import DATA_START_ROW, format_cell, rewrite_sheet_sorted, sort_players
 
 PRIORITY = ["Valslayer", "Mabi", "Remi"]
 
@@ -92,3 +94,54 @@ def test_sort_players_no_priority_argument():
         "C": [make_char(1755)] * 3,
     }
     assert sort_players(eligibility) == ["B", "C", "A"]
+
+
+# --- rewrite_sheet_sorted ---
+
+def _make_ws(current_names: list[str]) -> MagicMock:
+    ws = MagicMock()
+    # get_players_from_sheet reads col_values(1): two header rows then names.
+    ws.col_values.return_value = ["Title", "Header", *current_names]
+    ws.id = 0
+    return ws
+
+
+def _make_spreadsheet(ws: MagicMock) -> MagicMock:
+    spreadsheet = MagicMock()
+    spreadsheet.worksheet.return_value = ws
+    spreadsheet.id = "sheet-id"
+    return spreadsheet
+
+
+def test_rewrite_never_clears_before_writing():
+    """A failure between a clear and the rewrite destroyed column A (the
+    documented source of truth); the rewrite must be a single overwrite."""
+    ws = _make_ws(["Alice", "Bob"])
+    spreadsheet = _make_spreadsheet(ws)
+
+    rewrite_sheet_sorted(
+        spreadsheet, "Tab", {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"], MagicMock()
+    )
+
+    ws.batch_clear.assert_not_called()
+    assert ws.update.call_count == 1
+
+
+def test_rewrite_overwrites_the_full_rectangle_with_values_first():
+    """Stale rows (more current names than ordered players) must be blanked by
+    the overwrite itself, and gspread 6 wants update(values, range_name)."""
+    ws = _make_ws(["Alice", "Bob", "Carol"])  # Carol dropped from the new order
+    spreadsheet = _make_spreadsheet(ws)
+
+    rewrite_sheet_sorted(
+        spreadsheet, "Tab", {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"], MagicMock()
+    )
+
+    args, kwargs = ws.update.call_args
+    rows = args[0] if args else kwargs["values"]
+    assert isinstance(rows, list), "values must be the first positional argument"
+    assert len(rows) == 3  # max(ordered, current) — Carol's old row gets blanked
+    assert all(len(r) == 7 for r in rows)  # A + B..G
+    assert rows[2] == [""] * 7
+    range_arg = args[1] if len(args) > 1 else kwargs.get("range_name")
+    assert range_arg == f"A{DATA_START_ROW}"

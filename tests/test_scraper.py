@@ -1,7 +1,5 @@
-from models import Character
+from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
 from scraper import _parse_roster_entry, count_eligible, filter_and_sort
-
-MAX_ELIGIBLE = 6
 
 
 def make_char(name: str, ilvl: int, cp: float = 5000.0, char_class: str = "Slayer") -> Character:

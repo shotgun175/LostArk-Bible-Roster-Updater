@@ -6,9 +6,8 @@ import string
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 
 from class_map import get_class_from_name
-from models import Character
+from models import Character, MAX_CHARS_PER_PLAYER
 
-MAX_CHARS_PER_PLAYER = 6
 BASE_URL = "https://lostark.bible/character/NA/{}/roster"
 TIMEOUT_MS = 30_000
 

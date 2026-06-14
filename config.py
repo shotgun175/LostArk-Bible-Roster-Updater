@@ -19,13 +19,6 @@ def load_config(path: str = "config.json") -> dict:
         return json.load(f)
 
 
-def load_overrides(path: str = "config.json") -> dict:
-    # Override values may be:
-    #   - an int (threshold only, no cap), e.g. 1750
-    #   - an object with "threshold" and optional "cap", e.g. {"threshold": 1750, "cap": 1800}
-    return load_config(path).get("overrides", {})
-
-
 def parse_threshold_from_tab(tab_name: str) -> int | None:
     # Anchor to end-of-string so "(1740+)" only matches at the end of the tab name.
     match = re.search(r'\((\d+)\+\)$', tab_name)

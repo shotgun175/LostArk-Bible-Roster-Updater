@@ -4,6 +4,11 @@ KR names come from the ``class`` field in lostark.bible's embedded page JSON
 (the ``roster`` array inside the ``kit.start`` data argument in each page's
 inline ``<script>`` tag).  These are stable internal identifiers used by the
 game server and are independent of the Svelte build.
+
+Last verified against live lostark.bible pages: 2026-06-11. To re-derive
+after a new class releases: open any roster page containing the new class,
+find its ``class`` value in the inline hydration script, and add the mapping
+here (the console warning below names the unmapped value when it appears).
 """
 
 CLASS_MAP: dict[str, str] = {
@@ -42,6 +47,15 @@ CLASS_MAP: dict[str, str] = {
 def get_class_from_name(kr_name: str) -> str:
     """Return the English class name for the given KR internal class string.
 
-    Returns 'Unknown' if the name is not in the map.
+    Returns 'Unknown' (with a console warning) if the name is not in the map,
+    so a newly released class is visible to the operator instead of silently
+    writing 'Unknown' rows to the sheet.
     """
-    return CLASS_MAP.get(kr_name, "Unknown")
+    eng_name = CLASS_MAP.get(kr_name)
+    if eng_name is None:
+        print(
+            f"Warning: unmapped class '{kr_name}' from lostark.bible — writing "
+            "'Unknown'. A new class may have released; add it to class_map.py."
+        )
+        return "Unknown"
+    return eng_name

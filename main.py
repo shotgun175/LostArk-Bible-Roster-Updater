@@ -24,7 +24,7 @@ from sheets import (
 )
 
 CREDENTIALS_PATH = "credentials.json"
-DEFAULT_SPREADSHEET_NAME = "BOZO BOZONGOS"
+DEFAULT_SPREADSHEET_NAME = "Your Spreadsheet Name"  # override via config.json
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
@@ -34,6 +34,34 @@ SCOPES = [
 def confirm(prompt: str) -> bool:
     """Prompt the user for yes/no confirmation. Returns True only for exact 'yes'."""
     return input(f"{prompt} (yes/no): ").strip().lower() == "yes"
+
+
+def _open_spreadsheet(spreadsheet_name: str):
+    """Authorize and open the spreadsheet.
+
+    Translates the two common first-run failures into actionable messages
+    instead of raw tracebacks in the launcher's console window.
+    """
+    try:
+        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+    except FileNotFoundError:
+        print(
+            f"Error: '{CREDENTIALS_PATH}' not found. Create a Google Cloud "
+            "service-account key and save it next to main.py as "
+            f"'{CREDENTIALS_PATH}' — see the README's Google Cloud setup steps."
+        )
+        sys.exit(1)
+    try:
+        spreadsheet = gspread.authorize(creds).open(spreadsheet_name)
+    except gspread.SpreadsheetNotFound:
+        print(
+            f"Error: spreadsheet '{spreadsheet_name}' was not found. Check "
+            "spreadsheet_name in config.json, and make sure the sheet is "
+            "shared (Editor) with the service account's client_email from "
+            f"'{CREDENTIALS_PATH}' — see the README."
+        )
+        sys.exit(1)
+    return creds, spreadsheet
 
 
 def _scrape_all_rosters(
@@ -86,12 +114,16 @@ def run_update(
     player_names: list[str],
     overrides: dict,
     priority_players: list[str],
+    tab_player_lists: dict[str, list[str]] | None = None,
 ) -> None:
     """Run the full update pipeline for the given tabs and players.
 
     Scrapes each player's roster once (regardless of tab count), then filters
-    per tab from the cached roster.
+    per tab from the cached roster. Each tab is rewritten against its OWN
+    column-A player list (tab_player_lists) — using one shared list silently
+    clobbered any tab whose list differed from the first tab's.
     """
+    tab_player_lists = tab_player_lists or {}
     rosters = _scrape_all_rosters(page, player_names)
 
     for tab_name in tab_names:
@@ -104,7 +136,14 @@ def run_update(
         range_label = f"{threshold}–{cap}" if cap is not None else f"{threshold}+"
         print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
-        player_eligibility = _filter_for_tab(rosters, tab_name, threshold, cap)
+        print_eligibility_for = rosters
+        if len(player_names) > 1:
+            # An explicit empty list means the tab's column A is empty: write
+            # nothing there (rewrite no-ops on zero rows) rather than falling
+            # back to the union and populating a deliberately empty tab.
+            tab_list = tab_player_lists[tab_name] if tab_name in tab_player_lists else player_names
+            print_eligibility_for = {n: rosters.get(n, []) for n in tab_list}
+        player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 
         print("Writing to sheet...", flush=True, end=" ")
         if len(player_names) == 1:
@@ -155,8 +194,7 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
-    spreadsheet = gspread.authorize(creds).open(spreadsheet_name)
+    creds, spreadsheet = _open_spreadsheet(spreadsheet_name)
     sheets_service = build("sheets", "v4", credentials=creds)
     all_tabs = get_tab_names(spreadsheet)
 
@@ -167,7 +205,14 @@ def main() -> None:
 
     target_tabs = [args.sheet] if args.sheet else all_tabs
 
-    sheet_player_names = get_players_from_sheet(spreadsheet.worksheet(target_tabs[0]))
+    # Each tab's column A is its own source of truth; scrape the union so
+    # every tab can be rewritten against its own list.
+    tab_player_lists = {
+        tab: get_players_from_sheet(spreadsheet.worksheet(tab)) for tab in target_tabs
+    }
+    sheet_player_names = list(
+        dict.fromkeys(n for tab in target_tabs for n in tab_player_lists[tab])
+    )
     players_lower = {n.lower(): n for n in sheet_player_names}
 
     resolved_player = None
@@ -197,6 +242,7 @@ def main() -> None:
                 player_names=target_players,
                 overrides=overrides,
                 priority_players=priority_players,
+                tab_player_lists=tab_player_lists,
             )
         finally:
             browser.close()

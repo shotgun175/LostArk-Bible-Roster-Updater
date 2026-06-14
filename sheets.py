@@ -1,10 +1,15 @@
 """Google Sheets read/write for the Lost Ark roster updater."""
 from googleapiclient.discovery import Resource
 
-from models import Character
+from models import Character, MAX_CHARS_PER_PLAYER
 
 HEADER_ROWS = 2                  # row 1 = title, row 2 = column headers
 DATA_START_ROW = HEADER_ROWS + 1  # player rows start at row 3
+
+# Per-player character cells live in columns B.._LAST_CHAR_COL; everything that
+# touches row widths or ranges derives from MAX_CHARS_PER_PLAYER.
+_ROW_WIDTH = 1 + MAX_CHARS_PER_PLAYER            # column A + one cell per character
+_LAST_CHAR_COL = chr(ord("B") + MAX_CHARS_PER_PLAYER - 1)  # "G" for a cap of 6
 
 # Rich text colors: Name=navy, ilvl=plum, Class=purple, CP=deep teal
 _COLORS = {
@@ -134,24 +139,33 @@ def rewrite_sheet_sorted(
     ordered_players: list[str],
     sheets_service: Resource,
 ) -> None:
-    """Clear and rewrite columns A-G for all players in the given order."""
+    """Rewrite columns A-G for all players in the given order.
+
+    A single full-rectangle overwrite, deliberately with no clear first: a
+    network/API failure between a clear and a rewrite used to destroy column A
+    (the documented source of truth). Stale rows beyond the new player list
+    are blanked by padding the payload instead.
+    """
     ws = spreadsheet.worksheet(tab_name)
     current_names = get_players_from_sheet(ws)
     num_rows = max(len(ordered_players), len(current_names))
     if num_rows == 0:
         return
 
-    last_row = DATA_START_ROW + num_rows - 1
-    ws.batch_clear([f"A{DATA_START_ROW}:G{last_row}"])
-
     rows = []
     for name in ordered_players:
         chars = player_eligibility.get(name, [])
         row = [name] + [format_cell(c) for c in chars]
-        while len(row) < 7:   # A + B-G = 7 columns
+        while len(row) < _ROW_WIDTH:
             row.append("")
         rows.append(row)
-    ws.update(f"A{DATA_START_ROW}", rows)
+    while len(rows) < num_rows:
+        rows.append([""] * _ROW_WIDTH)
+    # gspread 6: values first, range second (the old order is a deprecated shim).
+    # Relies on gspread's RAW value-input default: scraped character names are
+    # attacker-controllable via lostark.bible, so do NOT switch this to
+    # USER_ENTERED without sanitizing leading = + @ (formula injection).
+    ws.update(rows, f"A{DATA_START_ROW}")
 
     rich_text_cells = _build_rich_text_cells(
         ordered_players, player_eligibility, DATA_START_ROW - 1
@@ -176,17 +190,19 @@ def update_player_rows(
     if not rows_to_update:
         return
 
-    ws.batch_clear([f"B{row}:G{row}" for row, _ in rows_to_update])
-
     cell_updates = []
     rich_text_cells: list[tuple[int, int, str]] = []
     for row_num, name in rows_to_update:
         chars = player_eligibility[name]
         cells = [format_cell(c) for c in chars]
-        while len(cells) < 6:
+        while len(cells) < MAX_CHARS_PER_PLAYER:
             cells.append("")
-        cell_updates.append({"range": f"B{row_num}:G{row_num}", "values": [cells]})
+        cell_updates.append(
+            {"range": f"B{row_num}:{_LAST_CHAR_COL}{row_num}", "values": [cells]}
+        )
         rich_text_cells += [(row_num - 1, 1 + j, format_cell(c)) for j, c in enumerate(chars)]
+    # Same RAW value-input dependence as rewrite_sheet_sorted above: never
+    # switch to USER_ENTERED without sanitizing the scraped strings.
     ws.batch_update(cell_updates)
 
     _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)

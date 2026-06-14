@@ -1,6 +1,6 @@
 # LostArk Bible Roster Updater
 
-Scrapes character rosters from [lostark.bible](https://lostark.bible) and writes each player's eligible characters to the **BOZO BOZONGOS** Google Sheet. Run it once before each raid week to keep everyone's roster current.
+Scrapes character rosters from [lostark.bible](https://lostark.bible) and writes each player's eligible characters to your roster Google Sheet. Run it once before each raid week to keep everyone's roster current.
 
 Part of [Lost Ark Tools](https://shotgun175.github.io/) — see all tools.
 
@@ -9,7 +9,7 @@ Part of [Lost Ark Tools](https://shotgun175.github.io/) — see all tools.
 ## How it all works together
 
 ```
-lostark.bible  →  scraper.py  →  sheets.py  →  Bozo Bozongos (Google Sheet)  →  "Serca (1740+)" tab  →  Roster table + Run planner
+lostark.bible  →  scraper.py  →  sheets.py  →  Your roster sheet (Google Sheet)  →  "Serca (1740+)" tab  →  Roster table + Run planner
 ```
 
 **Step by step:**
@@ -23,13 +23,20 @@ lostark.bible  →  scraper.py  →  sheets.py  →  Bozo Bozongos (Google Sheet
    CharName | iLvl
    ClassName | CP
    ```
-6. Players are sorted top-to-bottom by most eligible characters; ties broken by total combat power (higher investment = higher placement). Priority players (configured via `priority_players` in `config.json` — currently Valslayer, Mabi, Remi) always appear first regardless of count.
+6. Players are sorted top-to-bottom by most eligible characters; ties broken by total combat power (higher investment = higher placement). Priority players (configured via `priority_players` in `config.json`) always appear first regardless of count.
 
 ---
 
 ## First-time setup
 
-**1. Install Python dependencies**
+**0. Create the virtual environment** — the launcher (`LostArk Bible Roster Updater.bat`)
+hard-requires a venv at `.\venv`, so create it there (not `.venv`):
+```
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+**1. Install Python dependencies** (inside the venv)
 ```
 pip install -r requirements.txt
 ```
@@ -66,19 +73,19 @@ Set `spreadsheet_name` to your Google Sheet name, list any `priority_players` wh
 
 ## Running the tool
 
-**Double-click** `LostArk Roster Updater.bat` — opens PowerShell with the venv activated and shows help automatically.
+**Double-click** `LostArk Bible Roster Updater.bat` — opens PowerShell with the venv activated and shows help automatically.
 
 Or from a terminal with the venv active:
 
 ```
 # One player, one tab  (no confirmation prompt)
-python main.py --player Valslayer --sheet "Serca (1740+)"
+python main.py --player PlayerOne --sheet "Serca (1740+)"
 
 # All players, one tab
 python main.py --sheet "Serca (1740+)"
 
 # One player, all tabs
-python main.py --player Valslayer
+python main.py --player PlayerOne
 
 # Everyone, everything
 python main.py --all
@@ -143,12 +150,12 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
 
 ```json
 {
-  "spreadsheet_name": "BOZO BOZONGOS",
-  "priority_players": ["Valslayer", "Mabi", "Remi"],
+  "spreadsheet_name": "Your Spreadsheet Name",
+  "priority_players": ["PlayerOne", "PlayerTwo"],
   "overrides": {
     "Serca (1740+)": 1750,
     "Hard Serca (1730+)": { "threshold": 1730 },
-    "Hard Serca (1730+)": { "threshold": 1730, "cap": 1739 }
+    "Hard Brel (1670+)": { "threshold": 1670, "cap": 1699 }
   }
 }
 ```
@@ -171,7 +178,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 
 ### Confirmed assumptions
 
-- **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` finds the `roster: [ ... ]` array by regex + bracket-depth counting and evaluates that slice as a JS literal in the page context — there is no public/documented API to call.
+- **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing) — no JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
 - **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
 - **`config.json` covers the sheet name, priority players, and iLvl threshold/cap** — `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
@@ -180,7 +187,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 
 ### Open questions / known fragility
 
-- **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-counting inside lostark.bible's inline hydration script, then evaluating the slice as JS. Any change to their page structure, hydration format, the `roster` key name, or the entry shape will silently break scraping (it returns no characters, surfacing as "could not find roster" errors). There is no versioned contract to depend on — treat this as the primary maintenance risk.
+- **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-scanning lostark.bible's inline hydration script. There is no versioned contract to depend on — treat this as the primary maintenance risk. Failure modes are at least distinct now: a page with no roster key reports "check the character name", while a roster that exists but cannot be parsed reports a scraper/site-layout problem.
 - **Class names map to a fixed set.** `class_map.py` translates KR internal class names to NA names for a known set of classes; a new or renamed class shows as `Unknown` until the map is updated.
 - **No region support beyond NA** (see above) without a code change.
 - **No retry/backoff.** A timeout or load error for one player is logged and that player is skipped (treated as an empty roster) for the run.
@@ -209,5 +216,5 @@ tests/                Unit tests
 config.example.json   Template config — copy to config.json and edit
 config.json           Spreadsheet name, priority players, threshold overrides (gitignored)
 credentials.json      Google service account key (gitignored)
-LostArk Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
+LostArk Bible Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
 ```

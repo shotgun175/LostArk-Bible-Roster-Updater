@@ -1,4 +1,4 @@
-from config import load_config, load_overrides, parse_threshold_from_tab, get_threshold_and_cap
+from config import load_config, parse_threshold_from_tab, get_threshold_and_cap
 
 
 def test_parse_threshold_standard():
@@ -47,34 +47,6 @@ def test_get_threshold_and_cap_cap_null_in_object():
     # Explicitly setting cap to null in JSON should be treated as uncapped
     overrides = {"Tab": {"threshold": 1600, "cap": None}}
     assert get_threshold_and_cap("Tab", overrides) == (1600, None)
-
-
-# --- load_overrides ---
-
-def test_load_overrides_missing_file(tmp_path):
-    result = load_overrides(str(tmp_path / "nonexistent.json"))
-    assert result == {}
-
-
-def test_load_overrides_with_int_value(tmp_path):
-    config_file = tmp_path / "config.json"
-    config_file.write_text('{"overrides": {"Nightmare Serca (1740+)": 1750}}')
-    result = load_overrides(str(config_file))
-    assert result == {"Nightmare Serca (1740+)": 1750}
-
-
-def test_load_overrides_with_object_value(tmp_path):
-    config_file = tmp_path / "config.json"
-    config_file.write_text('{"overrides": {"Tab": {"threshold": 1750, "cap": 1800}}}')
-    result = load_overrides(str(config_file))
-    assert result == {"Tab": {"threshold": 1750, "cap": 1800}}
-
-
-def test_load_overrides_empty_overrides(tmp_path):
-    config_file = tmp_path / "config.json"
-    config_file.write_text('{"overrides": {}}')
-    result = load_overrides(str(config_file))
-    assert result == {}
 
 
 # --- load_config ---

@@ -34,6 +34,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
+SCOPES_SHEETS_ONLY = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
 def confirm(prompt: str) -> bool:
@@ -41,29 +42,41 @@ def confirm(prompt: str) -> bool:
     return input(f"{prompt} (yes/no): ").strip().lower() == "yes"
 
 
-def _open_spreadsheet(spreadsheet_name: str):
-    """Authorize and open the spreadsheet.
+def _open_spreadsheet(spreadsheet_name: str, spreadsheet_id: str | None = None):
+    """Authorize and open the spreadsheet, by id (least privilege) or name.
 
-    Translates the two common first-run failures into actionable messages
+    Translates the common first-run failures into actionable messages
     instead of raw tracebacks in the launcher's console window.
     """
+    scopes = SCOPES_SHEETS_ONLY if spreadsheet_id else SCOPES
     try:
-        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=scopes)
     except FileNotFoundError:
         print(
             f"Error: '{CREDENTIALS_PATH}' not found. Create a Google Cloud "
             "service-account key and save it next to main.py as "
-            f"'{CREDENTIALS_PATH}' — see the README's Google Cloud setup steps."
+            "'credentials.json' - see the README's Google Cloud setup steps."
         )
         sys.exit(1)
+    client = gspread.authorize(creds)
     try:
-        spreadsheet = gspread.authorize(creds).open(spreadsheet_name)
+        if spreadsheet_id:
+            spreadsheet = client.open_by_key(spreadsheet_id)
+        else:
+            spreadsheet = client.open(spreadsheet_name)
+    except PermissionError:
+        print(
+            "Error: the service account is not allowed to open this "
+            "spreadsheet. Share the sheet (Editor) with the client_email "
+            f"from '{CREDENTIALS_PATH}' - see the README."
+        )
+        sys.exit(1)
     except gspread.SpreadsheetNotFound:
         print(
-            f"Error: spreadsheet '{spreadsheet_name}' was not found. Check "
-            "spreadsheet_name in config.json, and make sure the sheet is "
-            "shared (Editor) with the service account's client_email from "
-            f"'{CREDENTIALS_PATH}' — see the README."
+            f"Error: spreadsheet '{spreadsheet_id or spreadsheet_name}' was "
+            "not found. Check spreadsheet_id/spreadsheet_name in config.json, "
+            "and make sure the sheet is shared (Editor) with the service "
+            f"account's client_email from '{CREDENTIALS_PATH}' - see the README."
         )
         sys.exit(1)
     return creds, spreadsheet
@@ -200,6 +213,7 @@ def _build_confirmation_prompt(
 def main() -> None:
     config = load_config()
     spreadsheet_name = config.get("spreadsheet_name", DEFAULT_SPREADSHEET_NAME)
+    spreadsheet_id = config.get("spreadsheet_id") or None
     priority_players = config.get("priority_players", [])
     overrides = config.get("overrides", {})
 
@@ -217,7 +231,7 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    creds, spreadsheet = _open_spreadsheet(spreadsheet_name)
+    creds, spreadsheet = _open_spreadsheet(spreadsheet_name, spreadsheet_id)
     sheets_service = build("sheets", "v4", credentials=creds)
     all_worksheets = spreadsheet.worksheets()
     all_tabs = [ws.title for ws in all_worksheets]

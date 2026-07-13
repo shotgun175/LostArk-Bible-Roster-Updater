@@ -190,3 +190,36 @@ def test_politeness_delay_between_players(monkeypatch):
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: [])
     main._scrape_all_rosters(None, ["A", "B", "C"])
     assert sleeps == [main.SCRAPE_DELAY_S] * 2  # between players, not before the first
+
+
+def _auth_ok(monkeypatch):
+    creds_cls = MagicMock()
+    monkeypatch.setattr(main.Credentials, "from_service_account_file", creds_cls)
+    client = MagicMock()
+    monkeypatch.setattr(main.gspread, "authorize", lambda creds: client)
+    return creds_cls, client
+
+
+def test_open_by_id_uses_open_by_key_and_sheets_scope_only(monkeypatch):
+    creds_cls, client = _auth_ok(monkeypatch)
+    main._open_spreadsheet("ignored", spreadsheet_id="abc123")
+    client.open_by_key.assert_called_once_with("abc123")
+    client.open.assert_not_called()
+    assert creds_cls.call_args.kwargs["scopes"] == ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+def test_open_by_id_unshared_sheet_is_friendly(monkeypatch, capsys):
+    _, client = _auth_ok(monkeypatch)
+    client.open_by_key.side_effect = PermissionError("403")
+    with pytest.raises(SystemExit) as exc:
+        main._open_spreadsheet("ignored", spreadsheet_id="abc123")
+    assert exc.value.code == 1
+    out = capsys.readouterr().out.lower()
+    assert "share" in out and "client_email" in out
+
+
+def test_open_by_name_still_uses_both_scopes(monkeypatch):
+    creds_cls, client = _auth_ok(monkeypatch)
+    main._open_spreadsheet("My Sheet")
+    client.open.assert_called_once_with("My Sheet")
+    assert "https://www.googleapis.com/auth/drive.readonly" in creds_cls.call_args.kwargs["scopes"]

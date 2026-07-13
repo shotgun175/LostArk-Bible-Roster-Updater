@@ -51,7 +51,7 @@ playwright install chromium
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project (any name)
 2. In the left menu go to **APIs & Services → Library**, search for and enable both:
    - **Google Sheets API**
-   - **Google Drive API**
+   - **Google Drive API** (only needed when opening by spreadsheet_name; skip it if you set spreadsheet_id)
 3. Go to **APIs & Services → Credentials**, click **Create Credentials → Service account**
    - Give it any name, click through the remaining steps, and hit **Done**
 4. Click your new service account in the list, go to the **Keys** tab, click **Add Key → Create new key → JSON**
@@ -67,7 +67,7 @@ playwright install chromium
 copy config.example.json config.json
 ```
 
-Set `spreadsheet_name` to your Google Sheet name, list any `priority_players` who should always sort to the top, and add `overrides` for tabs whose iLvl threshold doesn't match the tab name. `config.json` is gitignored — your personal config never gets committed.
+Set `spreadsheet_name` to your Google Sheet name, or set `spreadsheet_id` to open the sheet directly by id: the id is the long token in the sheet's URL between `/d/` and `/edit`. When `spreadsheet_id` is set, `spreadsheet_name` is ignored and the Google Drive API (and its scope) is not needed. Then list any `priority_players` who should always sort to the top, and add `overrides` for tabs whose iLvl threshold doesn't match the tab name. `config.json` is gitignored; your personal config never gets committed.
 
 ---
 
@@ -182,7 +182,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
 - **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
 - **`config.json` covers the sheet name, priority players, and iLvl threshold/cap** — `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
-- **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write) and Drive (read-only).
+- **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write), plus Drive (read-only) only when opening by name.
 - **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A–G.
 
 ### Open questions / known fragility

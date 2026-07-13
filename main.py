@@ -1,6 +1,7 @@
 """CLI entry point for the Lost Ark roster updater."""
 import argparse
 import sys
+from pathlib import Path
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -24,7 +25,7 @@ from sheets import (
     update_player_rows,
 )
 
-CREDENTIALS_PATH = "credentials.json"
+CREDENTIALS_PATH = str(Path(__file__).resolve().parent / "credentials.json")
 DEFAULT_SPREADSHEET_NAME = "Your Spreadsheet Name"  # override via config.json
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",

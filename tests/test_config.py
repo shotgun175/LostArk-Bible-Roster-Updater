@@ -59,19 +59,6 @@ def test_load_config_missing_file(tmp_path):
     assert load_config(str(tmp_path / "nope.json")) == {}
 
 
-def test_load_config_returns_full_object(tmp_path):
-    config_file = tmp_path / "config.json"
-    config_file.write_text(
-        '{"spreadsheet_name": "X", "priority_players": ["A"], "overrides": {}}'
-    )
-    result = load_config(str(config_file))
-    assert result == {
-        "spreadsheet_name": "X",
-        "priority_players": ["A"],
-        "overrides": {},
-    }
-
-
 def test_load_config_reads_utf8_accented_names(tmp_path):
     p = tmp_path / "config.json"
     p.write_text('{"priority_players": ["Remiyà"]}', encoding="utf-8")

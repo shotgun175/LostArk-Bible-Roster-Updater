@@ -21,3 +21,13 @@ desktop.ini
 
 # Logs
 *.log
+
+# Secrets (defense in depth)
+.env
+.env.*
+*.key
+*.pem
+token.json
+credentials*.json
+*service*account*.json
+build/

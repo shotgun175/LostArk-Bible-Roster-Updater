@@ -161,3 +161,20 @@ def test_parse_roster_entry_missing_combat_power_defaults_to_zero():
     char = _parse_roster_entry(entry)
     assert char is not None
     assert char.cp == 0.0
+
+
+from unittest.mock import MagicMock
+
+import pytest
+from playwright.sync_api import Error as PlaywrightError
+
+from scraper import ScrapeFailedError, scrape_roster
+
+
+def test_scrape_roster_raises_scrape_failed_on_load_error():
+    page = MagicMock()
+    page.goto.side_effect = PlaywrightError("net::ERR_CONNECTION_RESET")
+    with pytest.raises(ScrapeFailedError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert "PlayerOne" in str(exc.value)
+    assert "existing sheet data" in str(exc.value)

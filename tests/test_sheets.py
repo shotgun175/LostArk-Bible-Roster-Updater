@@ -7,6 +7,7 @@ from sheets import (
     get_players_from_sheet,
     rewrite_sheet_sorted,
     sort_players,
+    update_player_rows,
 )
 
 PRIORITY = ["PlayerOne", "PlayerTwo", "PlayerThree"]
@@ -108,6 +109,7 @@ def _make_ws(current_names: list[str]) -> MagicMock:
     ws = MagicMock()
     # get_players_from_sheet reads col_values(1): two header rows then names.
     ws.col_values.return_value = ["Title", "Header", *current_names]
+    ws.get.return_value = []
     ws.id = 0
     return ws
 
@@ -180,3 +182,38 @@ def test_player_name_containing_run_is_not_a_marker():
     # Character names cannot contain spaces, so "Runeblade" must stay a player.
     ws = _ws_with_col_a("Alice", "Runeblade", "Run")
     assert get_players_from_sheet(ws) == ["Alice", "Runeblade"]
+
+
+# --- failed-scrape preservation (None sentinel) ---
+
+def test_sort_players_treats_failed_scrape_as_zero_chars():
+    eligibility = {"A": [make_char(1755)], "B": None}
+    assert sort_players(eligibility) == ["A", "B"]
+
+
+def test_rewrite_preserves_cells_and_name_for_failed_scrape():
+    ws = _make_ws(["Alice", "Bob"])
+    ws.get.return_value = [
+        ["Alice", "OldA | 1750\nBard | 5000"],
+        ["Bob", "OldB | 1755\nSlayer | 5100"],
+    ]
+    spreadsheet = _make_spreadsheet(ws)
+
+    rewrite_sheet_sorted(
+        spreadsheet, "Tab",
+        {"Alice": None, "Bob": [make_char(1760)]},
+        ["Bob", "Alice"], MagicMock(),
+    )
+
+    rows = ws.update.call_args.args[0]
+    names_in_col_a = [r[0] for r in rows]
+    assert "Alice" in names_in_col_a  # failed player never dropped from column A
+    alice_row = rows[names_in_col_a.index("Alice")]
+    assert alice_row[1] == "OldA | 1750\nBard | 5000"  # carried forward, not blanked
+
+
+def test_update_player_rows_skips_failed_scrape_entirely():
+    ws = _make_ws(["Alice"])
+    spreadsheet = _make_spreadsheet(ws)
+    update_player_rows(spreadsheet, "Tab", {"Alice": None}, MagicMock())
+    ws.batch_update.assert_not_called()

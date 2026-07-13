@@ -92,7 +92,7 @@ def sort_players(
     rest = [p for p in all_nicknames if p not in priority]
 
     def sort_key(nickname: str) -> tuple[int, float]:
-        chars = player_eligibility[nickname]
+        chars = player_eligibility[nickname] or []
         return (-len(chars), -sum(c.cp for c in chars))
 
     rest.sort(key=sort_key)
@@ -132,16 +132,21 @@ def get_tab_names(spreadsheet) -> list[str]:
     return [ws.title for ws in spreadsheet.worksheets()]
 
 
-def _build_rich_text_cells(
-    ordered_players: list[str],
-    player_eligibility: dict[str, list[Character]],
-    base_row_0: int,
-) -> list[tuple[int, int, str]]:
-    return [
-        (base_row_0 + i, 1 + j, format_cell(c))
-        for i, name in enumerate(ordered_players)
-        for j, c in enumerate(player_eligibility.get(name, []))
-    ]
+def _existing_rows_by_name(ws) -> dict[str, list[str]]:
+    """Current B..G cell values keyed by column-A name, stopping at the marker.
+
+    Keyed by name (not row position) because the rewrite re-sorts rows.
+    """
+    fetched = ws.get(f"A{DATA_START_ROW}:{_LAST_CHAR_COL}")
+    existing: dict[str, list[str]] = {}
+    for row in fetched:
+        name = (row[0] if row else "").strip()
+        if _is_run_marker(name):
+            break
+        if not name:
+            continue
+        existing[name] = list(row[1:]) + [""] * (MAX_CHARS_PER_PLAYER - (len(row) - 1))
+    return existing
 
 
 def rewrite_sheet_sorted(
@@ -164,10 +169,16 @@ def rewrite_sheet_sorted(
     if num_rows == 0:
         return
 
+    failed = [n for n, chars in player_eligibility.items() if chars is None]
+    existing = _existing_rows_by_name(ws) if failed else {}
+
     rows = []
     for name in ordered_players:
-        chars = player_eligibility.get(name, [])
-        row = [name] + [format_cell(c) for c in chars]
+        chars = player_eligibility.get(name)
+        if chars is None:
+            row = [name] + existing.get(name, [""] * MAX_CHARS_PER_PLAYER)
+        else:
+            row = [name] + [format_cell(c) for c in chars]
         while len(row) < _ROW_WIDTH:
             row.append("")
         rows.append(row)
@@ -179,9 +190,12 @@ def rewrite_sheet_sorted(
     # USER_ENTERED without sanitizing leading = + @ (formula injection).
     ws.update(rows, f"A{DATA_START_ROW}")
 
-    rich_text_cells = _build_rich_text_cells(
-        ordered_players, player_eligibility, DATA_START_ROW - 1
-    )
+    rich_text_cells = [
+        (DATA_START_ROW - 1 + i, 1 + j, text)
+        for i, row in enumerate(rows)
+        for j, text in enumerate(row[1:])
+        if text
+    ]
     _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)
 
 
@@ -197,7 +211,7 @@ def update_player_rows(
     rows_to_update = [
         (DATA_START_ROW + i, name)
         for i, name in enumerate(player_names)
-        if name in player_eligibility
+        if player_eligibility.get(name) is not None
     ]
     if not rows_to_update:
         return

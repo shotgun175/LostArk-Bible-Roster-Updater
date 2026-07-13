@@ -11,6 +11,7 @@ from config import load_config, get_threshold_and_cap
 from models import Character
 from scraper import (
     MAX_CHARS_PER_PLAYER,
+    ScrapeFailedError,
     count_eligible,
     filter_and_sort,
     scrape_roster,
@@ -66,9 +67,13 @@ def _open_spreadsheet(spreadsheet_name: str):
 
 def _scrape_all_rosters(
     page: Page, player_names: list[str]
-) -> dict[str, list[Character]]:
-    """Scrape each player's full roster once. Returns {player: characters}."""
-    rosters: dict[str, list[Character]] = {}
+) -> dict[str, list[Character] | None]:
+    """Scrape each player's full roster once. Returns {player: characters}.
+
+    None marks a failed scrape: downstream writers must preserve that
+    player's existing sheet cells instead of blanking them.
+    """
+    rosters: dict[str, list[Character] | None] = {}
     for name in player_names:
         print(f"Scraping {name}...", flush=True, end=" ")
         try:
@@ -77,25 +82,29 @@ def _scrape_all_rosters(
             rosters[name] = chars
         except RuntimeError as e:
             print(f"\n{e}")
-            rosters[name] = []
+            rosters[name] = None
     return rosters
 
 
 def _filter_for_tab(
-    rosters: dict[str, list[Character]],
+    rosters: dict[str, list[Character] | None],
     tab_name: str,
     threshold: int,
     cap: int | None,
-) -> dict[str, list[Character]]:
+) -> dict[str, list[Character] | None]:
     """Apply tab-specific iLvl filtering to every cached roster, with status output."""
-    eligibility: dict[str, list[Character]] = {}
+    eligibility: dict[str, list[Character] | None] = {}
     for name, all_chars in rosters.items():
+        if all_chars is None:
+            eligibility[name] = None
+            print(f"  {name}: scrape FAILED - existing sheet data preserved.")
+            continue
         eligible = filter_and_sort(all_chars, threshold, cap)
         total = count_eligible(all_chars, threshold, cap)
         eligibility[name] = eligible
 
         if not eligible:
-            print(f"  {name}: 0 eligible characters for '{tab_name}', skipping.")
+            print(f"  {name}: 0 eligible characters for '{tab_name}'.")
         else:
             print(f"  {name}: {len(eligible)} eligible")
         if total > MAX_CHARS_PER_PLAYER:
@@ -115,16 +124,19 @@ def run_update(
     overrides: dict,
     priority_players: list[str],
     tab_player_lists: dict[str, list[str]] | None = None,
-) -> None:
+) -> list[str]:
     """Run the full update pipeline for the given tabs and players.
 
     Scrapes each player's roster once (regardless of tab count), then filters
     per tab from the cached roster. Each tab is rewritten against its OWN
     column-A player list (tab_player_lists) — using one shared list silently
     clobbered any tab whose list differed from the first tab's.
+
+    Returns the names whose scrape failed (their sheet rows were preserved).
     """
     tab_player_lists = tab_player_lists or {}
     rosters = _scrape_all_rosters(page, player_names)
+    failed_players = [n for n in player_names if rosters[n] is None]
 
     for tab_name in tab_names:
         result = get_threshold_and_cap(tab_name, overrides)
@@ -154,6 +166,8 @@ def run_update(
                 spreadsheet, tab_name, player_eligibility, ordered, sheets_service
             )
         print("done.")
+
+    return failed_players
 
 
 def _build_confirmation_prompt(
@@ -234,7 +248,7 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            run_update(
+            failed = run_update(
                 page=page,
                 spreadsheet=spreadsheet,
                 sheets_service=sheets_service,
@@ -247,6 +261,12 @@ def main() -> None:
         finally:
             browser.close()
 
+    if failed:
+        print(
+            f"\nDone with {len(failed)} scrape failure(s): {', '.join(failed)}. "
+            "Their sheet rows were left unchanged."
+        )
+        sys.exit(1)
     print("\nAll done.")
 
 

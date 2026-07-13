@@ -109,3 +109,32 @@ def test_open_spreadsheet_unshared_sheet_is_friendly(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Some Sheet" in out
     assert "shared" in out.lower() or "share" in out.lower()
+
+
+def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch):
+    """A scrape failure must not masquerade as an empty roster: the writer
+    receives None and run_update returns the failed player's name."""
+    def boom(page, name):
+        raise main.ScrapeFailedError(f"down for {name}")
+    monkeypatch.setattr(main, "scrape_roster", boom)
+
+    received: list[dict] = []
+    monkeypatch.setattr(
+        main,
+        "rewrite_sheet_sorted",
+        lambda spreadsheet, tab, eligibility, ordered, svc: received.append(eligibility),
+    )
+
+    failed = main.run_update(
+        page=None,
+        spreadsheet=MagicMock(),
+        sheets_service=MagicMock(),
+        tab_names=["Hard (1700+)"],
+        player_names=["Alice", "Bob"],
+        overrides={},
+        priority_players=[],
+        tab_player_lists={"Hard (1700+)": ["Alice", "Bob"]},
+    )
+
+    assert failed == ["Alice", "Bob"]
+    assert received[0] == {"Alice": None, "Bob": None}

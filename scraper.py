@@ -21,6 +21,15 @@ class RosterExtractionError(Exception):
     """
 
 
+class ScrapeFailedError(RuntimeError):
+    """The roster could not be fetched (timeout, load error, site failure).
+
+    Distinct from a name problem (plain RuntimeError telling the operator to
+    check the spelling): callers must preserve the player's existing sheet
+    data instead of treating the roster as empty.
+    """
+
+
 _SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
 _ROSTER_KEY_RE = re.compile(r"\broster\s*:\s*\[")
 _IDENT_START = set(string.ascii_letters + "_$")
@@ -162,7 +171,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
     Raises RuntimeError with a user-facing message if character page not found.
-    Returns empty list on timeout or if page is unresponsive.
+    Raises ScrapeFailedError on timeout or load error (caller preserves sheet data).
 
     Caller owns the Playwright Page lifecycle so a single browser can be
     reused across many scrapes.
@@ -200,9 +209,11 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
 
         return [c for entry in roster_entries if (c := _parse_roster_entry(entry)) is not None]
 
-    except (PlaywrightTimeoutError, PlaywrightError):
-        print(f"Warning: Failed to load roster for '{character_name}' — skipping.")
-        return []
+    except (PlaywrightTimeoutError, PlaywrightError) as exc:
+        raise ScrapeFailedError(
+            f"Warning: Failed to load roster for '{character_name}' - "
+            "keeping their existing sheet data."
+        ) from exc
 
 
 def count_eligible(characters: list[Character], threshold: int, cap: int | None) -> int:

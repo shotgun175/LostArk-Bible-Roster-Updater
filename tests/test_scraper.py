@@ -1,5 +1,18 @@
-﻿from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
-from scraper import _parse_entries, _parse_roster_entry, count_eligible, filter_and_sort
+from unittest.mock import MagicMock
+
+import pytest
+from playwright.sync_api import Error as PlaywrightError
+
+from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
+from scraper import (
+    ScrapeFailedError,
+    _parse_entries,
+    _parse_roster_entry,
+    count_eligible,
+    filter_and_sort,
+    install_resource_blocking,
+    scrape_roster,
+)
 
 
 def make_char(name: str, ilvl: int, cp: float = 5000.0, char_class: str = "Slayer") -> Character:
@@ -163,14 +176,6 @@ def test_parse_roster_entry_missing_combat_power_defaults_to_zero():
     assert char.cp == 0.0
 
 
-from unittest.mock import MagicMock
-
-import pytest
-from playwright.sync_api import Error as PlaywrightError
-
-from scraper import ScrapeFailedError, install_resource_blocking, scrape_roster
-
-
 def test_goto_uses_domcontentloaded(monkeypatch):
     monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
@@ -278,12 +283,14 @@ def test_goto_retries_on_429_then_succeeds(monkeypatch):
 
 
 def test_goto_exhausted_retries_raise_scrape_failed(monkeypatch):
-    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    sleeps: list[float] = []
+    monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
     page = MagicMock()
     page.goto.side_effect = PlaywrightError("reset")
     with pytest.raises(ScrapeFailedError):
         scrape_roster(page, "PlayerOne")
     assert page.goto.call_count == 3
+    assert sleeps == [2.0, 5.0]
 
 
 # --- _parse_entries ---

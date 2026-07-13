@@ -30,4 +30,6 @@ desktop.ini
 token.json
 credentials*.json
 *service*account*.json
+
+# Build artifacts
 build/

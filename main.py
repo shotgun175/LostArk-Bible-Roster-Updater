@@ -91,7 +91,7 @@ def _scrape_all_rosters(
     player's existing sheet cells instead of blanking them.
     """
     rosters: dict[str, list[Character] | None] = {}
-    for name in player_names:
+    for i, name in enumerate(player_names):
         print(f"Scraping {name}...", flush=True, end=" ")
         try:
             chars = scrape_roster(page, name)
@@ -100,7 +100,7 @@ def _scrape_all_rosters(
         except RuntimeError as e:
             print(f"\n{e}")
             rosters[name] = None
-        if name != player_names[-1]:
+        if i != len(player_names) - 1:
             time.sleep(SCRAPE_DELAY_S + random.uniform(0.0, 0.5))
     return rosters
 

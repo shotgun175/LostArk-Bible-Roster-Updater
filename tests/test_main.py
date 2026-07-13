@@ -42,6 +42,7 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch):
         player_names=["Alice", "Bob", "Carol"],  # union across tabs
         overrides={},
         priority_players=[],
+        single_player=False,
     )
 
     assert rewrites == [
@@ -76,12 +77,28 @@ def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch):
         player_names=["Alice", "Bob"],
         overrides={},
         priority_players=[],
+        single_player=False,
     )
 
     assert rewrites == [
         (ws_hard, ["Alice", "Bob"]),
         (ws_empty, []),
     ]
+
+
+def test_sheet_mode_with_one_player_still_uses_full_rewrite(monkeypatch):
+    monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
+    calls: list[str] = []
+    monkeypatch.setattr(main, "rewrite_sheet_sorted", lambda *a, **k: calls.append("rewrite"))
+    monkeypatch.setattr(main, "update_player_rows", lambda *a, **k: calls.append("update"))
+
+    main.run_update(
+        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        tabs={"Hard (1700+)": (MagicMock(), [(3, "Alice")], {})},
+        player_names=["Alice"], overrides={}, priority_players=[],
+        single_player=False,
+    )
+    assert calls == ["rewrite"]
 
 
 def test_open_spreadsheet_missing_credentials_is_friendly(monkeypatch, capsys):
@@ -138,6 +155,7 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch):
         player_names=["Alice", "Bob"],
         overrides={},
         priority_players=[],
+        single_player=False,
     )
 
     assert failed == ["Alice", "Bob"]
@@ -157,5 +175,6 @@ def test_run_update_never_reads_from_worksheet_objects(monkeypatch):
         page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
         tabs={"Hard (1700+)": (sentinel, [(3, "Alice")], {})},
         player_names=["Alice"], overrides={}, priority_players=[],
+        single_player=False,
     )
     assert writes == [sentinel]

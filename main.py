@@ -123,6 +123,7 @@ def run_update(
     player_names: list[str],
     overrides: dict,
     priority_players: list[str],
+    single_player: bool,
 ) -> list[str]:
     """Run the full update pipeline for the given tabs and players.
 
@@ -148,7 +149,7 @@ def run_update(
         print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
         print_eligibility_for = rosters
-        if len(player_names) > 1:
+        if not single_player:
             # An empty player_rows means the tab's column A is empty: write
             # nothing there (rewrite no-ops on zero rows) rather than falling
             # back to the union and populating a deliberately empty tab.
@@ -157,7 +158,7 @@ def run_update(
         player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 
         print("Writing to sheet...", flush=True, end=" ")
-        if len(player_names) == 1:
+        if single_player:
             update_player_rows(
                 ws, spreadsheet_id, player_eligibility, player_rows, sheets_service
             )
@@ -260,6 +261,7 @@ def main() -> None:
                 player_names=target_players,
                 overrides=overrides,
                 priority_players=priority_players,
+                single_player=resolved_player is not None,
             )
         finally:
             browser.close()

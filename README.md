@@ -105,7 +105,7 @@ python main.py --all
 
 - Column A is the source of truth for the player list — edit it directly to add/remove players
 - Player names must match exactly as they appear on lostark.bible
-- The tool stops reading column A when it hits a cell containing "Run"
+- The tool stops reading column A at the run-planner marker: a cell that is "Run" or starts with "Run " (e.g. "Run Planner"). Everything below it is never touched.
 
 ### Run planner (below the roster)
 

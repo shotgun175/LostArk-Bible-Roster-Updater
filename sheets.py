@@ -99,16 +99,28 @@ def sort_players(
     return priority_present + rest
 
 
+def _is_run_marker(cell_text: str) -> bool:
+    """True for the column-A cell that starts the hand-maintained run planner.
+
+    Matches "Run" exactly or any cell starting with "Run " ("Run Planner",
+    "Run 1"), case-insensitive. Lost Ark character names cannot contain
+    spaces, so a real player ("Runeblade") can never false-positive.
+    """
+    lowered = cell_text.strip().lower()
+    return lowered == "run" or lowered.startswith("run ")
+
+
 def get_players_from_sheet(worksheet) -> list[str]:
     """Return character names from column A (rows DATA_START_ROW onward).
 
-    Stops at the first cell containing 'Run' (the scheduling section marker),
-    so the player list and the run schedule can coexist in the same column.
+    Stops at the first run-planner marker cell ("Run", or anything starting
+    with "Run "), so the player list and the run schedule can coexist in the
+    same column.
     """
     players = []
     for v in worksheet.col_values(1)[HEADER_ROWS:]:
         stripped = v.strip()
-        if stripped.lower() == "run":
+        if _is_run_marker(stripped):
             break
         if stripped:
             players.append(stripped)

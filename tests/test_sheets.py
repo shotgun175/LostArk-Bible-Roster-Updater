@@ -1,7 +1,13 @@
 ﻿from unittest.mock import MagicMock
 
 from models import Character
-from sheets import DATA_START_ROW, format_cell, rewrite_sheet_sorted, sort_players
+from sheets import (
+    DATA_START_ROW,
+    format_cell,
+    get_players_from_sheet,
+    rewrite_sheet_sorted,
+    sort_players,
+)
 
 PRIORITY = ["PlayerOne", "PlayerTwo", "PlayerThree"]
 
@@ -145,3 +151,32 @@ def test_rewrite_overwrites_the_full_rectangle_with_values_first():
     assert rows[2] == [""] * 7
     range_arg = args[1] if len(args) > 1 else kwargs.get("range_name")
     assert range_arg == f"A{DATA_START_ROW}"
+
+
+# --- get_players_from_sheet / run-planner marker ---
+
+def _ws_with_col_a(*values: str) -> MagicMock:
+    ws = MagicMock()
+    ws.col_values.return_value = ["Title", "Header", *values]
+    return ws
+
+
+def test_marker_run_planner_stops_the_read():
+    ws = _ws_with_col_a("Alice", "Run Planner", "Pug")
+    assert get_players_from_sheet(ws) == ["Alice"]
+
+
+def test_marker_run_1_stops_the_read():
+    ws = _ws_with_col_a("Alice", "Run 1", "Pug")
+    assert get_players_from_sheet(ws) == ["Alice"]
+
+
+def test_bare_run_still_stops_the_read():
+    ws = _ws_with_col_a("Alice", "Run", "Pug")
+    assert get_players_from_sheet(ws) == ["Alice"]
+
+
+def test_player_name_containing_run_is_not_a_marker():
+    # Character names cannot contain spaces, so "Runeblade" must stay a player.
+    ws = _ws_with_col_a("Alice", "Runeblade", "Run")
+    assert get_players_from_sheet(ws) == ["Alice", "Runeblade"]

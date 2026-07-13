@@ -235,7 +235,8 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
     Raises RuntimeError with a user-facing message if character page not found.
-    Raises ScrapeFailedError on timeout or load error (caller preserves sheet data).
+    Raises ScrapeFailedError on timeout, load error, or a non-404 HTTP error
+    status (caller preserves sheet data).
 
     Caller owns the Playwright Page lifecycle so a single browser can be
     reused across many scrapes.

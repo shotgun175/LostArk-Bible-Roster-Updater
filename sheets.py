@@ -78,7 +78,7 @@ def format_cell(character: Character) -> str:
 
 
 def sort_players(
-    player_eligibility: dict[str, list[Character]],
+    player_eligibility: dict[str, list[Character] | None],
     priority: list[str] | None = None,
 ) -> list[str]:
     """
@@ -86,6 +86,7 @@ def sort_players(
     Priority players come first (in given order), then remaining players
     sorted by eligible character count descending, tie-broken by sum of CP
     across all eligible characters descending.
+    A None value means the player's scrape failed; they sort as zero characters.
     """
     priority = priority or []
     all_nicknames = list(player_eligibility.keys())
@@ -146,7 +147,7 @@ def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
 def rewrite_sheet_sorted(
     ws,
     spreadsheet_id: str,
-    player_eligibility: dict[str, list[Character]],
+    player_eligibility: dict[str, list[Character] | None],
     ordered_players: list[str],
     player_rows: list[tuple[int, str]],
     existing: dict[str, list[str]],
@@ -161,6 +162,8 @@ def rewrite_sheet_sorted(
 
     Works entirely from the pre-read player_rows/existing (see read_tab);
     performs no reads of its own.
+    A None value means the scrape failed: the player's existing B-G cells are
+    carried forward from existing instead of being blanked.
     """
     last_occupied = player_rows[-1][0] if player_rows else DATA_START_ROW - 1
     num_rows = max(len(ordered_players), last_occupied - DATA_START_ROW + 1)
@@ -196,7 +199,7 @@ def rewrite_sheet_sorted(
 def update_player_rows(
     ws,
     spreadsheet_id: str,
-    player_eligibility: dict[str, list[Character]],
+    player_eligibility: dict[str, list[Character] | None],
     player_rows: list[tuple[int, str]],
     sheets_service: Resource,
 ) -> None:
@@ -204,6 +207,7 @@ def update_player_rows(
 
     player_rows is the tab's pre-read column A (see read_tab); this function
     performs no reads of its own.
+    A None value means the scrape failed: that player gets no B-G write at all.
     """
     eligibility_lower = {
         name.lower(): chars

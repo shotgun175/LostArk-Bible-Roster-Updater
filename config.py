@@ -15,6 +15,7 @@ def load_config(path: str | None = None) -> dict:
     a non-UTF-8 save instead of dumping a traceback.
 
     Recognized top-level keys:
+      - "spreadsheet_id":   str - sheet id from the URL; when set, spreadsheet_name is ignored
       - "spreadsheet_name": str - name of the Google Sheet to update
       - "priority_players": list[str] - players that always appear at the top
       - "overrides":        dict   - per-tab iLvl threshold/cap overrides

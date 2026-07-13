@@ -18,8 +18,7 @@ from scraper import (
     scrape_roster,
 )
 from sheets import (
-    get_tab_names,
-    get_players_from_sheet,
+    read_tab,
     rewrite_sheet_sorted,
     sort_players,
     update_player_rows,
@@ -118,28 +117,27 @@ def _filter_for_tab(
 
 def run_update(
     page: Page,
-    spreadsheet,
     sheets_service,
-    tab_names: list[str],
+    spreadsheet_id: str,
+    tabs: dict[str, tuple],
     player_names: list[str],
     overrides: dict,
     priority_players: list[str],
-    tab_player_lists: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Run the full update pipeline for the given tabs and players.
 
     Scrapes each player's roster once (regardless of tab count), then filters
-    per tab from the cached roster. Each tab is rewritten against its OWN
-    column-A player list (tab_player_lists) — using one shared list silently
-    clobbered any tab whose list differed from the first tab's.
+    per tab from the cached roster. tabs maps each tab name to its pre-read
+    (worksheet, player_rows, existing) triple (see sheets.read_tab): each tab
+    is written against its OWN column-A player list, and neither this function
+    nor the writers read from the worksheet again.
 
     Returns the names whose scrape failed (their sheet rows were preserved).
     """
-    tab_player_lists = tab_player_lists or {}
     rosters = _scrape_all_rosters(page, player_names)
     failed_players = [n for n in player_names if rosters[n] is None]
 
-    for tab_name in tab_names:
+    for tab_name, (ws, player_rows, existing) in tabs.items():
         result = get_threshold_and_cap(tab_name, overrides)
         if result is None:
             print(f"Skipping '{tab_name}' — could not parse iLvl threshold from tab name.")
@@ -151,20 +149,23 @@ def run_update(
 
         print_eligibility_for = rosters
         if len(player_names) > 1:
-            # An explicit empty list means the tab's column A is empty: write
+            # An empty player_rows means the tab's column A is empty: write
             # nothing there (rewrite no-ops on zero rows) rather than falling
             # back to the union and populating a deliberately empty tab.
-            tab_list = tab_player_lists[tab_name] if tab_name in tab_player_lists else player_names
+            tab_list = [n for _, n in player_rows]
             print_eligibility_for = {n: rosters.get(n, []) for n in tab_list}
         player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 
         print("Writing to sheet...", flush=True, end=" ")
         if len(player_names) == 1:
-            update_player_rows(spreadsheet, tab_name, player_eligibility, sheets_service)
+            update_player_rows(
+                ws, spreadsheet_id, player_eligibility, player_rows, sheets_service
+            )
         else:
             ordered = sort_players(player_eligibility, priority=priority_players)
             rewrite_sheet_sorted(
-                spreadsheet, tab_name, player_eligibility, ordered, sheets_service
+                ws, spreadsheet_id, player_eligibility, ordered,
+                player_rows, existing, sheets_service,
             )
         print("done.")
 
@@ -211,7 +212,9 @@ def main() -> None:
 
     creds, spreadsheet = _open_spreadsheet(spreadsheet_name)
     sheets_service = build("sheets", "v4", credentials=creds)
-    all_tabs = get_tab_names(spreadsheet)
+    all_worksheets = spreadsheet.worksheets()
+    all_tabs = [ws.title for ws in all_worksheets]
+    ws_by_title = {ws.title: ws for ws in all_worksheets}
 
     if args.sheet and args.sheet not in all_tabs:
         print(f"Error: Sheet '{args.sheet}' not found in spreadsheet.")
@@ -220,11 +223,11 @@ def main() -> None:
 
     target_tabs = [args.sheet] if args.sheet else all_tabs
 
-    # Each tab's column A is its own source of truth; scrape the union so
-    # every tab can be rewritten against its own list.
-    tab_player_lists = {
-        tab: get_players_from_sheet(spreadsheet.worksheet(tab)) for tab in target_tabs
-    }
+    # Each tab's column A is its own source of truth; read each tab exactly
+    # once here and scrape the union so every tab can be written against its
+    # own list without any further reads.
+    tabs = {tab: (ws_by_title[tab], *read_tab(ws_by_title[tab])) for tab in target_tabs}
+    tab_player_lists = {tab: [n for _, n in tabs[tab][1]] for tab in target_tabs}
     sheet_player_names = list(
         dict.fromkeys(n for tab in target_tabs for n in tab_player_lists[tab])
     )
@@ -251,13 +254,12 @@ def main() -> None:
             page = browser.new_page()
             failed = run_update(
                 page=page,
-                spreadsheet=spreadsheet,
                 sheets_service=sheets_service,
-                tab_names=target_tabs,
+                spreadsheet_id=spreadsheet.id,
+                tabs=tabs,
                 player_names=target_players,
                 overrides=overrides,
                 priority_players=priority_players,
-                tab_player_lists=tab_player_lists,
             )
         finally:
             browser.close()

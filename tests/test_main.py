@@ -21,32 +21,32 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch):
     }
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: scraped[name])
 
-    rewrites: list[tuple[str, list[str]]] = []
+    rewrites: list[tuple[object, list[str]]] = []
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda spreadsheet, tab, eligibility, ordered, svc: rewrites.append(
-            (tab, sorted(eligibility.keys()))
+        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: rewrites.append(
+            (ws, sorted(eligibility.keys()))
         ),
     )
 
+    ws_hard, ws_soft = MagicMock(), MagicMock()
     main.run_update(
         page=None,
-        spreadsheet=MagicMock(),
         sheets_service=MagicMock(),
-        tab_names=["Hard (1700+)", "Soft (1750+)"],
+        spreadsheet_id="sid",
+        tabs={
+            "Hard (1700+)": (ws_hard, [(3, "Alice"), (4, "Bob")], {}),
+            "Soft (1750+)": (ws_soft, [(3, "Bob"), (4, "Carol")], {}),
+        },
         player_names=["Alice", "Bob", "Carol"],  # union across tabs
         overrides={},
         priority_players=[],
-        tab_player_lists={
-            "Hard (1700+)": ["Alice", "Bob"],
-            "Soft (1750+)": ["Bob", "Carol"],
-        },
     )
 
     assert rewrites == [
-        ("Hard (1700+)", ["Alice", "Bob"]),
-        ("Soft (1750+)", ["Bob", "Carol"]),
+        (ws_hard, ["Alice", "Bob"]),
+        (ws_soft, ["Bob", "Carol"]),
     ]
 
 
@@ -55,29 +55,32 @@ def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch):
     list — the rewrite should receive an empty eligibility and no-op."""
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
 
-    rewrites: list[tuple[str, list[str]]] = []
+    rewrites: list[tuple[object, list[str]]] = []
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda spreadsheet, tab, eligibility, ordered, svc: rewrites.append(
-            (tab, sorted(eligibility.keys()))
+        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: rewrites.append(
+            (ws, sorted(eligibility.keys()))
         ),
     )
 
+    ws_hard, ws_empty = MagicMock(), MagicMock()
     main.run_update(
         page=None,
-        spreadsheet=MagicMock(),
         sheets_service=MagicMock(),
-        tab_names=["Hard (1700+)", "Empty (1750+)"],
+        spreadsheet_id="sid",
+        tabs={
+            "Hard (1700+)": (ws_hard, [(3, "Alice"), (4, "Bob")], {}),
+            "Empty (1750+)": (ws_empty, [], {}),
+        },
         player_names=["Alice", "Bob"],
         overrides={},
         priority_players=[],
-        tab_player_lists={"Hard (1700+)": ["Alice", "Bob"], "Empty (1750+)": []},
     )
 
     assert rewrites == [
-        ("Hard (1700+)", ["Alice", "Bob"]),
-        ("Empty (1750+)", []),
+        (ws_hard, ["Alice", "Bob"]),
+        (ws_empty, []),
     ]
 
 
@@ -122,19 +125,37 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch):
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda spreadsheet, tab, eligibility, ordered, svc: received.append(eligibility),
+        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: received.append(
+            eligibility
+        ),
     )
 
     failed = main.run_update(
         page=None,
-        spreadsheet=MagicMock(),
         sheets_service=MagicMock(),
-        tab_names=["Hard (1700+)"],
+        spreadsheet_id="sid",
+        tabs={"Hard (1700+)": (MagicMock(), [(3, "Alice"), (4, "Bob")], {})},
         player_names=["Alice", "Bob"],
         overrides={},
         priority_players=[],
-        tab_player_lists={"Hard (1700+)": ["Alice", "Bob"]},
     )
 
     assert failed == ["Alice", "Bob"]
     assert received[0] == {"Alice": None, "Bob": None}
+
+
+def test_run_update_never_reads_from_worksheet_objects(monkeypatch):
+    """Writers get pre-read data; run_update itself must not touch the ws.
+    A bare object() raises AttributeError on ANY attribute access, so this
+    fails loudly if run_update sneaks a read back in (MagicMock would hide it)."""
+    monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
+    writes: list[object] = []
+    monkeypatch.setattr(main, "rewrite_sheet_sorted", lambda ws, *a, **k: writes.append(ws))
+    monkeypatch.setattr(main, "update_player_rows", lambda ws, *a, **k: writes.append(ws))
+    sentinel = object()
+    main.run_update(
+        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        tabs={"Hard (1700+)": (sentinel, [(3, "Alice")], {})},
+        player_names=["Alice"], overrides={}, priority_players=[],
+    )
+    assert writes == [sentinel]

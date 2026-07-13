@@ -121,54 +121,34 @@ def _is_run_marker(cell_text: str) -> bool:
     return lowered == "run" or lowered.startswith("run ")
 
 
-def get_player_rows(worksheet) -> list[tuple[int, str]]:
-    """(1-based sheet row, name) for occupied player cells in column A.
+def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
+    """Read a tab's roster rectangle once.
 
-    Blank spacer rows are skipped but keep their positions so writers address
-    real rows. Stops at the run-planner marker (see _is_run_marker).
+    Returns (player_rows, existing): (1-based sheet row, name) for occupied
+    column-A cells, and current B..G values keyed by name. Blank spacer rows
+    keep their positions; the scan stops at the run-planner marker.
     """
-    rows: list[tuple[int, str]] = []
-    for offset, v in enumerate(worksheet.col_values(1)[HEADER_ROWS:]):
-        stripped = (v or "").strip()
-        if _is_run_marker(stripped):
-            break
-        if stripped:
-            rows.append((DATA_START_ROW + offset, stripped))
-    return rows
-
-
-def get_players_from_sheet(worksheet) -> list[str]:
-    """Names only; see get_player_rows for the stopping/skipping rules."""
-    return [name for _, name in get_player_rows(worksheet)]
-
-
-def get_tab_names(spreadsheet) -> list[str]:
-    """Return all worksheet tab names in the spreadsheet."""
-    return [ws.title for ws in spreadsheet.worksheets()]
-
-
-def _existing_rows_by_name(ws) -> dict[str, list[str]]:
-    """Current B..G cell values keyed by column-A name, stopping at the marker.
-
-    Keyed by name (not row position) because the rewrite re-sorts rows.
-    """
-    fetched = ws.get(f"A{DATA_START_ROW}:{_LAST_CHAR_COL}")
+    fetched = worksheet.get(f"A{DATA_START_ROW}:{_LAST_CHAR_COL}")
+    player_rows: list[tuple[int, str]] = []
     existing: dict[str, list[str]] = {}
-    for row in fetched:
+    for offset, row in enumerate(fetched):
         name = (row[0] if row else "").strip()
         if _is_run_marker(name):
             break
         if not name:
             continue
+        player_rows.append((DATA_START_ROW + offset, name))
         existing[name] = list(row[1:]) + [""] * (MAX_CHARS_PER_PLAYER - (len(row) - 1))
-    return existing
+    return player_rows, existing
 
 
 def rewrite_sheet_sorted(
-    spreadsheet,
-    tab_name: str,
+    ws,
+    spreadsheet_id: str,
     player_eligibility: dict[str, list[Character]],
     ordered_players: list[str],
+    player_rows: list[tuple[int, str]],
+    existing: dict[str, list[str]],
     sheets_service: Resource,
 ) -> None:
     """Rewrite columns A-G for all players in the given order.
@@ -177,16 +157,14 @@ def rewrite_sheet_sorted(
     network/API failure between a clear and a rewrite used to destroy column A
     (the documented source of truth). Stale rows beyond the new player list
     are blanked by padding the payload instead.
+
+    Works entirely from the pre-read player_rows/existing (see read_tab);
+    performs no reads of its own.
     """
-    ws = spreadsheet.worksheet(tab_name)
-    current_rows = get_player_rows(ws)
-    last_occupied = current_rows[-1][0] if current_rows else DATA_START_ROW - 1
+    last_occupied = player_rows[-1][0] if player_rows else DATA_START_ROW - 1
     num_rows = max(len(ordered_players), last_occupied - DATA_START_ROW + 1)
     if num_rows == 0:
         return
-
-    failed = [n for n, chars in player_eligibility.items() if chars is None]
-    existing = _existing_rows_by_name(ws) if failed else {}
 
     rows = []
     for name in ordered_players:
@@ -212,17 +190,21 @@ def rewrite_sheet_sorted(
         for j, text in enumerate(row[1:])
         if text
     ]
-    _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)
+    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)
 
 
 def update_player_rows(
-    spreadsheet,
-    tab_name: str,
+    ws,
+    spreadsheet_id: str,
     player_eligibility: dict[str, list[Character]],
+    player_rows: list[tuple[int, str]],
     sheets_service: Resource,
 ) -> None:
-    """Update only B-G for the players in player_eligibility, preserving sheet order."""
-    ws = spreadsheet.worksheet(tab_name)
+    """Update only B-G for the players in player_eligibility, preserving sheet order.
+
+    player_rows is the tab's pre-read column A (see read_tab); this function
+    performs no reads of its own.
+    """
     eligibility_lower = {
         name.lower(): chars
         for name, chars in player_eligibility.items()
@@ -230,7 +212,7 @@ def update_player_rows(
     }
     rows_to_update = [
         (row_num, name)
-        for row_num, name in get_player_rows(ws)
+        for row_num, name in player_rows
         if name.lower() in eligibility_lower
     ]
     if not rows_to_update:
@@ -251,4 +233,4 @@ def update_player_rows(
     # switch to USER_ENTERED without sanitizing the scraped strings.
     ws.batch_update(cell_updates)
 
-    _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)
+    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)

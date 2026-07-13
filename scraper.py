@@ -199,6 +199,19 @@ def _parse_entries(roster_entries: list, character_name: str) -> list[Character]
     return characters
 
 
+_BLOCKED_RESOURCE_TYPES = {"image", "media", "font", "stylesheet"}
+
+
+def install_resource_blocking(page: Page) -> None:
+    """Abort heavy subresources: only the initial document is ever read."""
+    def _route(route):
+        if route.request.resource_type in _BLOCKED_RESOURCE_TYPES:
+            route.abort()
+        else:
+            route.continue_()
+    page.route("**/*", _route)
+
+
 def _goto_with_retry(page: Page, url: str):
     """page.goto with bounded retries on load errors and 429/503 responses."""
     attempts = 1 + len(RETRY_DELAYS_S)
@@ -207,7 +220,7 @@ def _goto_with_retry(page: Page, url: str):
         if i:
             time.sleep(RETRY_DELAYS_S[i - 1])
         try:
-            response = page.goto(url, timeout=TIMEOUT_MS)
+            response = page.goto(url, timeout=TIMEOUT_MS, wait_until="domcontentloaded")
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
             last_exc = exc
             continue

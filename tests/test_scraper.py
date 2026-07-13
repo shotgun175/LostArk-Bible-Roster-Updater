@@ -168,7 +168,32 @@ from unittest.mock import MagicMock
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
-from scraper import ScrapeFailedError, scrape_roster
+from scraper import ScrapeFailedError, install_resource_blocking, scrape_roster
+
+
+def test_goto_uses_domcontentloaded(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(200)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_args.kwargs["wait_until"] == "domcontentloaded"
+
+
+def test_resource_blocking_aborts_images_and_continues_documents():
+    page = MagicMock()
+    install_resource_blocking(page)
+    handler = page.route.call_args.args[1]
+
+    image_route = MagicMock()
+    image_route.request.resource_type = "image"
+    handler(image_route)
+    image_route.abort.assert_called_once()
+
+    doc_route = MagicMock()
+    doc_route.request.resource_type = "document"
+    handler(doc_route)
+    doc_route.continue_.assert_called_once()
 
 
 def test_scrape_roster_raises_scrape_failed_on_load_error(monkeypatch):

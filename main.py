@@ -17,6 +17,7 @@ from scraper import (
     ScrapeFailedError,
     count_eligible,
     filter_and_sort,
+    install_resource_blocking,
     scrape_roster,
 )
 from sheets import (
@@ -258,6 +259,7 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
+            install_resource_blocking(page)
             failed = run_update(
                 page=page,
                 sheets_service=sheets_service,

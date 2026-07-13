@@ -110,21 +110,25 @@ def _is_run_marker(cell_text: str) -> bool:
     return lowered == "run" or lowered.startswith("run ")
 
 
-def get_players_from_sheet(worksheet) -> list[str]:
-    """Return character names from column A (rows DATA_START_ROW onward).
+def get_player_rows(worksheet) -> list[tuple[int, str]]:
+    """(1-based sheet row, name) for occupied player cells in column A.
 
-    Stops at the first run-planner marker cell ("Run", or anything starting
-    with "Run "), so the player list and the run schedule can coexist in the
-    same column.
+    Blank spacer rows are skipped but keep their positions so writers address
+    real rows. Stops at the run-planner marker (see _is_run_marker).
     """
-    players = []
-    for v in worksheet.col_values(1)[HEADER_ROWS:]:
-        stripped = v.strip()
+    rows: list[tuple[int, str]] = []
+    for offset, v in enumerate(worksheet.col_values(1)[HEADER_ROWS:]):
+        stripped = (v or "").strip()
         if _is_run_marker(stripped):
             break
         if stripped:
-            players.append(stripped)
-    return players
+            rows.append((DATA_START_ROW + offset, stripped))
+    return rows
+
+
+def get_players_from_sheet(worksheet) -> list[str]:
+    """Names only; see get_player_rows for the stopping/skipping rules."""
+    return [name for _, name in get_player_rows(worksheet)]
 
 
 def get_tab_names(spreadsheet) -> list[str]:
@@ -164,8 +168,9 @@ def rewrite_sheet_sorted(
     are blanked by padding the payload instead.
     """
     ws = spreadsheet.worksheet(tab_name)
-    current_names = get_players_from_sheet(ws)
-    num_rows = max(len(ordered_players), len(current_names))
+    current_rows = get_player_rows(ws)
+    last_occupied = current_rows[-1][0] if current_rows else DATA_START_ROW - 1
+    num_rows = max(len(ordered_players), last_occupied - DATA_START_ROW + 1)
     if num_rows == 0:
         return
 
@@ -207,10 +212,9 @@ def update_player_rows(
 ) -> None:
     """Update only B-G for the players in player_eligibility, preserving sheet order."""
     ws = spreadsheet.worksheet(tab_name)
-    player_names = get_players_from_sheet(ws)
     rows_to_update = [
-        (DATA_START_ROW + i, name)
-        for i, name in enumerate(player_names)
+        (row_num, name)
+        for row_num, name in get_player_rows(ws)
         if player_eligibility.get(name) is not None
     ]
     if not rows_to_update:

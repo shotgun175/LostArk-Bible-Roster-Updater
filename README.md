@@ -190,7 +190,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-scanning lostark.bible's inline hydration script. There is no versioned contract to depend on — treat this as the primary maintenance risk. Failure modes are at least distinct now: a page with no roster key reports "check the character name", while a roster that exists but cannot be parsed reports a scraper/site-layout problem.
 - **Class names map to a fixed set.** `class_map.py` translates KR internal class names to NA names for a known set of classes; a new or renamed class shows as `Unknown` until the map is updated.
 - **No region support beyond NA** (see above) without a code change.
-- **No retry/backoff.** A timeout or load error for one player is logged and that player is skipped (treated as an empty roster) for the run.
+- **Bounded retry and politeness delay.** Each roster fetch is retried up to twice (2s then 5s backoff) on load errors and HTTP 429/503, with about a second's pause between players to stay polite to lostark.bible. A player whose fetch still fails keeps their existing sheet data, the run reports the failure, and the tool exits nonzero.
 - **Dependencies are version-pinned but not fully locked.** `requirements.txt` pins direct dependencies to known-good versions; transitive dependencies are not captured in a lockfile.
 
 ### Scope (out)

@@ -20,6 +20,7 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch):
         "Carol": [make_char("C1", 1760)],
     }
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: scraped[name])
+    monkeypatch.setattr(main.time, "sleep", lambda s: None)
 
     rewrites: list[tuple[object, list[str]]] = []
     monkeypatch.setattr(
@@ -55,6 +56,7 @@ def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch):
     """A tab whose column A is empty must not be back-filled with the union
     list — the rewrite should receive an empty eligibility and no-op."""
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
+    monkeypatch.setattr(main.time, "sleep", lambda s: None)
 
     rewrites: list[tuple[object, list[str]]] = []
     monkeypatch.setattr(
@@ -137,6 +139,7 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch):
     def boom(page, name):
         raise main.ScrapeFailedError(f"down for {name}")
     monkeypatch.setattr(main, "scrape_roster", boom)
+    monkeypatch.setattr(main.time, "sleep", lambda s: None)
 
     received: list[dict] = []
     monkeypatch.setattr(
@@ -178,3 +181,12 @@ def test_run_update_never_reads_from_worksheet_objects(monkeypatch):
         single_player=False,
     )
     assert writes == [sentinel]
+
+
+def test_politeness_delay_between_players(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr(main.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(main.random, "uniform", lambda a, b: 0.0)
+    monkeypatch.setattr(main, "scrape_roster", lambda page, name: [])
+    main._scrape_all_rosters(None, ["A", "B", "C"])
+    assert sleeps == [main.SCRAPE_DELAY_S] * 2  # between players, not before the first

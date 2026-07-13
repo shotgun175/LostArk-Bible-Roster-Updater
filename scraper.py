@@ -2,6 +2,7 @@
 import json
 import re
 import string
+import time
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 
@@ -10,6 +11,8 @@ from models import Character, MAX_CHARS_PER_PLAYER
 
 BASE_URL = "https://lostark.bible/character/NA/{}/roster"
 TIMEOUT_MS = 30_000
+RETRY_DELAYS_S = (2.0, 5.0)  # backoff before attempt 2 and attempt 3
+_RETRYABLE_STATUSES = {429, 503}
 
 
 class RosterExtractionError(Exception):
@@ -196,6 +199,24 @@ def _parse_entries(roster_entries: list, character_name: str) -> list[Character]
     return characters
 
 
+def _goto_with_retry(page: Page, url: str):
+    """page.goto with bounded retries on load errors and 429/503 responses."""
+    attempts = 1 + len(RETRY_DELAYS_S)
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        if i:
+            time.sleep(RETRY_DELAYS_S[i - 1])
+        try:
+            response = page.goto(url, timeout=TIMEOUT_MS)
+        except (PlaywrightTimeoutError, PlaywrightError) as exc:
+            last_exc = exc
+            continue
+        if response and response.status in _RETRYABLE_STATUSES and i < attempts - 1:
+            continue
+        return response
+    raise last_exc
+
+
 def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
@@ -207,7 +228,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     url = BASE_URL.format(character_name)
     try:
-        response = page.goto(url, timeout=TIMEOUT_MS)
+        response = _goto_with_retry(page, url)
 
         if response and response.status == 404:
             raise RuntimeError(

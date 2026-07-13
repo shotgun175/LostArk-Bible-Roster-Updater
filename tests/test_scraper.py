@@ -171,7 +171,8 @@ from playwright.sync_api import Error as PlaywrightError
 from scraper import ScrapeFailedError, scrape_roster
 
 
-def test_scrape_roster_raises_scrape_failed_on_load_error():
+def test_scrape_roster_raises_scrape_failed_on_load_error(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
     page.goto.side_effect = PlaywrightError("net::ERR_CONNECTION_RESET")
     with pytest.raises(ScrapeFailedError) as exc:
@@ -188,7 +189,8 @@ def _resp(status: int, text: str = "<html></html>") -> MagicMock:
     return r
 
 
-def test_http_429_raises_site_problem_not_name_problem():
+def test_http_429_raises_site_problem_not_name_problem(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
     page.goto.return_value = _resp(429)
     with pytest.raises(ScrapeFailedError) as exc:
@@ -205,6 +207,39 @@ def test_http_404_is_still_a_name_problem():
         scrape_roster(page, "PlayerOne")
     assert not isinstance(exc.value, ScrapeFailedError)
     assert "spelling" in str(exc.value)
+
+
+# --- retry/backoff ---
+
+
+def test_goto_retries_once_after_load_error(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
+    page = MagicMock()
+    good = _resp(200, text="<html></html>")
+    page.goto.side_effect = [PlaywrightError("reset"), good]
+    with pytest.raises(RuntimeError):  # empty page -> no roster key -> name error
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 2
+    assert sleeps == [2.0]
+
+
+def test_goto_retries_on_429_then_succeeds(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.side_effect = [_resp(429), _resp(429), _resp(200)]
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 3
+
+
+def test_goto_exhausted_retries_raise_scrape_failed(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.side_effect = PlaywrightError("reset")
+    with pytest.raises(ScrapeFailedError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 3
 
 
 # --- _parse_entries ---

@@ -1,6 +1,8 @@
 """CLI entry point for the Lost Ark roster updater."""
 import argparse
+import random
 import sys
+import time
 from pathlib import Path
 
 import gspread
@@ -26,6 +28,7 @@ from sheets import (
 
 CREDENTIALS_PATH = str(Path(__file__).resolve().parent / "credentials.json")
 DEFAULT_SPREADSHEET_NAME = "Your Spreadsheet Name"  # override via config.json
+SCRAPE_DELAY_S = 1.0
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
@@ -83,6 +86,8 @@ def _scrape_all_rosters(
         except RuntimeError as e:
             print(f"\n{e}")
             rosters[name] = None
+        if name != player_names[-1]:
+            time.sleep(SCRAPE_DELAY_S + random.uniform(0.0, 0.5))
     return rosters
 
 

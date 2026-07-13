@@ -88,8 +88,19 @@ def sort_players(
     """
     priority = priority or []
     all_nicknames = list(player_eligibility.keys())
-    priority_present = [p for p in priority if p in all_nicknames]
-    rest = [p for p in all_nicknames if p not in priority]
+    norm = {n.strip().lower(): n for n in all_nicknames}
+    priority_present: list[str] = []
+    for p in priority:
+        match = norm.get(p.strip().lower())
+        if match is None:
+            print(
+                f"Warning: priority player '{p}' (config.json) not found in "
+                "column A - check the spelling."
+            )
+        elif match not in priority_present:
+            priority_present.append(match)
+    priority_lower = {p.strip().lower() for p in priority}
+    rest = [n for n in all_nicknames if n.strip().lower() not in priority_lower]
 
     def sort_key(nickname: str) -> tuple[int, float]:
         chars = player_eligibility[nickname] or []
@@ -212,10 +223,15 @@ def update_player_rows(
 ) -> None:
     """Update only B-G for the players in player_eligibility, preserving sheet order."""
     ws = spreadsheet.worksheet(tab_name)
+    eligibility_lower = {
+        name.lower(): chars
+        for name, chars in player_eligibility.items()
+        if chars is not None
+    }
     rows_to_update = [
         (row_num, name)
         for row_num, name in get_player_rows(ws)
-        if player_eligibility.get(name) is not None
+        if name.lower() in eligibility_lower
     ]
     if not rows_to_update:
         return
@@ -223,7 +239,7 @@ def update_player_rows(
     cell_updates = []
     rich_text_cells: list[tuple[int, int, str]] = []
     for row_num, name in rows_to_update:
-        chars = player_eligibility[name]
+        chars = eligibility_lower[name.lower()]
         cells = [format_cell(c) for c in chars]
         while len(cells) < MAX_CHARS_PER_PLAYER:
             cells.append("")

@@ -238,3 +238,26 @@ def test_rewrite_blanks_through_last_occupied_row_past_a_spacer():
     rows = ws.update.call_args.args[0]
     assert len(rows) == 3  # rows 3-5 covered, so old row-5 "Bob" cannot survive
     assert rows[1] == [""] * 7 and rows[2] == [""] * 7
+
+
+# --- case-insensitive matching ---
+
+def test_update_player_rows_matches_column_a_case_insensitively():
+    ws = _make_ws(["valslayer"])  # sheet spells it lowercase
+    spreadsheet = _make_spreadsheet(ws)
+    update_player_rows(spreadsheet, "Tab", {"Valslayer": [make_char(1750)]}, MagicMock())
+    ranges = [u["range"] for u in ws.batch_update.call_args.args[0]]
+    assert ranges == ["B3:G3"]
+
+
+def test_priority_matches_case_insensitively_and_uses_sheet_spelling():
+    eligibility = {"Valslayer": [make_char(1755)], "Other": [make_char(1755)] * 2}
+    result = sort_players(eligibility, priority=["valslayer"])
+    assert result == ["Valslayer", "Other"]  # sheet spelling, exactly once, first
+
+
+def test_unmatched_priority_player_warns(capsys):
+    eligibility = {"Other": [make_char(1755)]}
+    sort_players(eligibility, priority=["Ghost"])
+    out = capsys.readouterr().out
+    assert "Ghost" in out and "Warning" in out

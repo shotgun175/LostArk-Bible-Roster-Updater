@@ -186,6 +186,13 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
                 "check the character name/spelling in the Google Sheet."
             )
 
+        if response and not response.ok and response.status != 404:
+            raise ScrapeFailedError(
+                f"Error: lostark.bible returned HTTP {response.status} for "
+                f"'{character_name}' - a site problem, not a name problem. "
+                "Keeping their existing sheet data."
+            )
+
         # The roster array ships in the initial document's inline SvelteKit
         # hydration <script> (verified against the live site 2026-06-11), so
         # there is nothing to wait for after goto and no need to run JS in the

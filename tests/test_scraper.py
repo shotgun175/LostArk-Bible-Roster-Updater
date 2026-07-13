@@ -178,3 +178,30 @@ def test_scrape_roster_raises_scrape_failed_on_load_error():
         scrape_roster(page, "PlayerOne")
     assert "PlayerOne" in str(exc.value)
     assert "existing sheet data" in str(exc.value)
+
+
+def _resp(status: int, text: str = "<html></html>") -> MagicMock:
+    r = MagicMock()
+    r.status = status
+    r.ok = 200 <= status < 300
+    r.text.return_value = text
+    return r
+
+
+def test_http_429_raises_site_problem_not_name_problem():
+    page = MagicMock()
+    page.goto.return_value = _resp(429)
+    with pytest.raises(ScrapeFailedError) as exc:
+        scrape_roster(page, "PlayerOne")
+    msg = str(exc.value)
+    assert "429" in msg
+    assert "spelling" not in msg
+
+
+def test_http_404_is_still_a_name_problem():
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert not isinstance(exc.value, ScrapeFailedError)
+    assert "spelling" in str(exc.value)

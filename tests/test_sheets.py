@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+from gspread.utils import ValueInputOption
+
 from models import Character
 from sheets import (
     DATA_START_ROW,
@@ -150,6 +152,18 @@ def test_rewrite_overwrites_the_full_rectangle_with_values_first():
     assert rows[2] == [""] * 7
     range_arg = args[1] if len(args) > 1 else kwargs.get("range_name")
     assert range_arg == f"A{DATA_START_ROW}"
+
+
+def test_rewrite_passes_raw_value_input_explicitly():
+    ws = MagicMock()
+    rewrite_sheet_sorted(ws, "sid", {"Alice": [make_char(1750)]}, ["Alice"], [(3, "Alice")], {}, MagicMock())
+    assert ws.update.call_args.kwargs["value_input_option"] == ValueInputOption.raw
+
+
+def test_update_passes_raw_value_input_explicitly():
+    ws = MagicMock()
+    update_player_rows(ws, "sid", {"Alice": [make_char(1750)]}, [(3, "Alice")], MagicMock())
+    assert ws.batch_update.call_args.kwargs["value_input_option"] == ValueInputOption.raw
 
 
 # --- read_tab / run-planner marker ---

@@ -1,5 +1,5 @@
 ﻿from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
-from scraper import _parse_roster_entry, count_eligible, filter_and_sort
+from scraper import _parse_entries, _parse_roster_entry, count_eligible, filter_and_sort
 
 
 def make_char(name: str, ilvl: int, cp: float = 5000.0, char_class: str = "Slayer") -> Character:
@@ -205,3 +205,28 @@ def test_http_404_is_still_a_name_problem():
         scrape_roster(page, "PlayerOne")
     assert not isinstance(exc.value, ScrapeFailedError)
     assert "spelling" in str(exc.value)
+
+
+# --- _parse_entries ---
+
+
+def test_parse_entries_warns_on_bad_entry_and_keeps_good_ones(capsys):
+    entries = [make_entry(name="Good"), make_entry(name="Bad", ilvl="not-a-number")]
+    result = _parse_entries(entries, "PlayerOne")
+    assert [c.name for c in result] == ["Good"]
+    out = capsys.readouterr().out
+    assert "Bad" in out and "Warning" in out
+
+
+def test_parse_entries_all_bad_raises_site_format_error():
+    entries = [make_entry(ilvl="x"), make_entry(ilvl="y")]
+    with pytest.raises(ScrapeFailedError) as exc:
+        _parse_entries(entries, "PlayerOne")
+    assert "data format" in str(exc.value)
+
+
+def test_parse_entries_nameless_placeholder_stays_silent(capsys):
+    entries = [make_entry(name="Good"), make_entry(name="")]
+    result = _parse_entries(entries, "PlayerOne")
+    assert len(result) == 1
+    assert "Warning" not in capsys.readouterr().out

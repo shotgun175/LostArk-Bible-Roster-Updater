@@ -167,6 +167,35 @@ def _parse_roster_entry(entry: dict) -> Character | None:
         return None
 
 
+def _parse_entries(roster_entries: list, character_name: str) -> list[Character]:
+    """Parse raw roster entries, warning per unparseable entry.
+
+    Nameless placeholder entries are skipped silently (expected site noise).
+    Raises ScrapeFailedError when a non-empty list yields zero characters:
+    that is field-level site drift, not a name problem, and must be loud.
+    """
+    characters: list[Character] = []
+    for idx, entry in enumerate(roster_entries):
+        char = _parse_roster_entry(entry)
+        if char is not None:
+            characters.append(char)
+            continue
+        if isinstance(entry, dict) and not entry.get("name"):
+            continue
+        label = (isinstance(entry, dict) and entry.get("name")) or f"entry #{idx + 1}"
+        print(
+            f"Warning: skipping unparseable roster entry ({label}) "
+            f"for '{character_name}'."
+        )
+    if roster_entries and not characters:
+        raise ScrapeFailedError(
+            f"Error: none of the {len(roster_entries)} roster entries for "
+            f"'{character_name}' could be parsed - the site's data format "
+            "may have changed. Keeping their existing sheet data."
+        )
+    return characters
+
+
 def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
@@ -214,7 +243,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
                 "name/spelling in the Google Sheet."
             )
 
-        return [c for entry in roster_entries if (c := _parse_roster_entry(entry)) is not None]
+        return _parse_entries(roster_entries, character_name)
 
     except (PlaywrightTimeoutError, PlaywrightError) as exc:
         raise ScrapeFailedError(

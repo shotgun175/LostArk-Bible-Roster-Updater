@@ -3,6 +3,7 @@ import json
 import re
 import string
 import time
+from urllib.parse import quote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 
@@ -239,7 +240,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     Caller owns the Playwright Page lifecycle so a single browser can be
     reused across many scrapes.
     """
-    url = BASE_URL.format(character_name)
+    url = BASE_URL.format(quote(character_name, safe=""))
     try:
         response = _goto_with_retry(page, url)
 

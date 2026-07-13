@@ -234,6 +234,25 @@ def test_http_404_is_still_a_name_problem():
     assert "spelling" in str(exc.value)
 
 
+def test_url_percent_encodes_reserved_characters(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "a#b/c")
+    url = page.goto.call_args.args[0]
+    assert "a%23b%2Fc" in url and "#" not in url
+
+
+def test_url_percent_encodes_accented_names(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "Remiyà")
+    assert "Remiy%C3%A0" in page.goto.call_args.args[0]
+
+
 # --- retry/backoff ---
 
 

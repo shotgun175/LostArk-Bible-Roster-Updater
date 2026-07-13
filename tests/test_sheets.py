@@ -215,6 +215,33 @@ def test_player_name_containing_run_is_not_a_marker():
     assert _names(ws) == ["Alice", "Runeblade"]
 
 
+# --- read_tab / case-duplicate name warning ---
+
+def test_read_tab_warns_on_case_variant_duplicate_names(capsys):
+    ws = _ws_with_col_a("Valslayer", "Bob", "valslayer")
+    player_rows, _ = read_tab(ws)
+    out = capsys.readouterr().out
+    assert "Warning" in out
+    assert "3" in out and "5" in out
+    assert player_rows == [(3, "Valslayer"), (4, "Bob"), (5, "valslayer")]
+
+
+def test_read_tab_no_warning_for_distinct_names(capsys):
+    ws = _ws_with_col_a("Alice", "Bob", "Carol")
+    read_tab(ws)
+    out = capsys.readouterr().out
+    assert "Warning" not in out
+
+
+def test_read_tab_warns_on_exact_duplicate_names(capsys):
+    ws = _ws_with_col_a("valslayer", "Bob", "valslayer")
+    player_rows, _ = read_tab(ws)
+    out = capsys.readouterr().out
+    assert "Warning" in out
+    assert "3" in out and "5" in out
+    assert player_rows == [(3, "valslayer"), (4, "Bob"), (5, "valslayer")]
+
+
 # --- failed-scrape preservation (None sentinel) ---
 
 def test_sort_players_treats_failed_scrape_as_zero_chars():

@@ -123,6 +123,34 @@ def _is_run_marker(cell_text: str) -> bool:
     return lowered == "run" or lowered.startswith("run ")
 
 
+def _warn_case_duplicate_names(player_rows: list[tuple[int, str]]) -> None:
+    """Warn once per group when column A has case-insensitive duplicate names.
+
+    Detection only: player_rows/existing are unchanged either way (an exact
+    duplicate overwrites existing by exact spelling; case-variants coexist as
+    separate keys) - this just flags the sheet for a human to fix.
+    """
+    groups: dict[str, list[tuple[int, str]]] = {}
+    for row_num, name in player_rows:
+        groups.setdefault(name.lower(), []).append((row_num, name))
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        row_nums = [r for r, _ in rows]
+        rows_str = ", ".join(str(r) for r in row_nums[:-1])
+        if len(row_nums) > 2:
+            rows_str += ","
+        rows_str += f" and {row_nums[-1]}"
+        spellings = list(dict.fromkeys(n for _, n in rows))
+        spelling_str = "/".join(f"'{s}'" for s in spellings)
+        verb = "both name" if len(rows) == 2 else "all name"
+        print(
+            f"Warning: column A rows {rows_str} {verb} {spelling_str} "
+            "(case-insensitive) - duplicate rows can be blanked or "
+            "cross-written; fix the sheet."
+        )
+
+
 def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
     """Read a tab's roster rectangle once.
 
@@ -141,6 +169,7 @@ def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
             continue
         player_rows.append((DATA_START_ROW + offset, name))
         existing[name] = list(row[1:]) + [""] * (MAX_CHARS_PER_PLAYER - (len(row) - 1))
+    _warn_case_duplicate_names(player_rows)
     return player_rows, existing
 
 

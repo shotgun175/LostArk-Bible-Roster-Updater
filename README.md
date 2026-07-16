@@ -106,6 +106,7 @@ python main.py --all
 - Column A is the source of truth for the player list — edit it directly to add/remove players
 - Player names must match exactly as they appear on lostark.bible
 - The tool stops reading column A at the run-planner marker: a cell that is "Run" or starts with "Run " (e.g. "Run Planner"). Everything below it is never touched.
+- Each player should appear only once in column A. If two rows hold the same name (even with different capitalization), the tool warns at the start of the run; duplicate rows can end up blanked or written with the wrong player's data, so remove the duplicate row.
 
 ### Run planner (below the roster)
 
@@ -160,7 +161,7 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
 }
 ```
 
-`spreadsheet_name` and `priority_players` are also read from `config.json`. Both fall back to sensible defaults if absent (the default priority list is empty — i.e. no priority).
+`spreadsheet_name` and `priority_players` are also read from `config.json`. Both fall back to sensible defaults if absent (the default priority list is empty, i.e. no priority). `priority_players` entries are matched against column A case-insensitively, so capitalization differences between `config.json` and the sheet don't matter. A priority player who doesn't appear in a tab's column A is ignored for that tab, with a warning printed so you can check the spelling.
 
 | Form | Effect |
 |------|--------|
@@ -181,7 +182,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing) — no JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
 - **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
-- **`config.json` covers the sheet name, priority players, and iLvl threshold/cap** — `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
+- **`config.json` covers the sheet id/name, priority players, and iLvl threshold/cap**: `spreadsheet_id` (opens the sheet directly by key and takes precedence over the name), `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
 - **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write), plus Drive (read-only) only when opening by name.
 - **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A–G.
 
@@ -214,7 +215,7 @@ config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests
 config.example.json   Template config — copy to config.json and edit
-config.json           Spreadsheet name, priority players, threshold overrides (gitignored)
+config.json           Spreadsheet id/name, priority players, threshold overrides (gitignored)
 credentials.json      Google service account key (gitignored)
 LostArk Bible Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
 ```

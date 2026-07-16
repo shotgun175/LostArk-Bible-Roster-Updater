@@ -1,6 +1,9 @@
 """CLI entry point for the Lost Ark roster updater."""
 import argparse
+import random
 import sys
+import time
+from pathlib import Path
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -11,24 +14,27 @@ from config import load_config, get_threshold_and_cap
 from models import Character
 from scraper import (
     MAX_CHARS_PER_PLAYER,
+    ScrapeFailedError,
     count_eligible,
     filter_and_sort,
+    install_resource_blocking,
     scrape_roster,
 )
 from sheets import (
-    get_tab_names,
-    get_players_from_sheet,
+    read_tab,
     rewrite_sheet_sorted,
     sort_players,
     update_player_rows,
 )
 
-CREDENTIALS_PATH = "credentials.json"
+CREDENTIALS_PATH = str(Path(__file__).resolve().parent / "credentials.json")
 DEFAULT_SPREADSHEET_NAME = "Your Spreadsheet Name"  # override via config.json
+SCRAPE_DELAY_S = 1.0
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
+SCOPES_SHEETS_ONLY = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
 def confirm(prompt: str) -> bool:
@@ -36,29 +42,41 @@ def confirm(prompt: str) -> bool:
     return input(f"{prompt} (yes/no): ").strip().lower() == "yes"
 
 
-def _open_spreadsheet(spreadsheet_name: str):
-    """Authorize and open the spreadsheet.
+def _open_spreadsheet(spreadsheet_name: str, spreadsheet_id: str | None = None):
+    """Authorize and open the spreadsheet, by id (least privilege) or name.
 
-    Translates the two common first-run failures into actionable messages
+    Translates the common first-run failures into actionable messages
     instead of raw tracebacks in the launcher's console window.
     """
+    scopes = SCOPES_SHEETS_ONLY if spreadsheet_id else SCOPES
     try:
-        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=scopes)
     except FileNotFoundError:
         print(
             f"Error: '{CREDENTIALS_PATH}' not found. Create a Google Cloud "
             "service-account key and save it next to main.py as "
-            f"'{CREDENTIALS_PATH}' — see the README's Google Cloud setup steps."
+            "'credentials.json' - see the README's Google Cloud setup steps."
         )
         sys.exit(1)
+    client = gspread.authorize(creds)
     try:
-        spreadsheet = gspread.authorize(creds).open(spreadsheet_name)
+        if spreadsheet_id:
+            spreadsheet = client.open_by_key(spreadsheet_id)
+        else:
+            spreadsheet = client.open(spreadsheet_name)
+    except PermissionError:
+        print(
+            "Error: the service account is not allowed to open this "
+            "spreadsheet. Share the sheet (Editor) with the client_email "
+            f"from '{CREDENTIALS_PATH}' - see the README."
+        )
+        sys.exit(1)
     except gspread.SpreadsheetNotFound:
         print(
-            f"Error: spreadsheet '{spreadsheet_name}' was not found. Check "
-            "spreadsheet_name in config.json, and make sure the sheet is "
-            "shared (Editor) with the service account's client_email from "
-            f"'{CREDENTIALS_PATH}' — see the README."
+            f"Error: spreadsheet '{spreadsheet_id or spreadsheet_name}' was "
+            "not found. Check spreadsheet_id/spreadsheet_name in config.json, "
+            "and make sure the sheet is shared (Editor) with the service "
+            f"account's client_email from '{CREDENTIALS_PATH}' - see the README."
         )
         sys.exit(1)
     return creds, spreadsheet
@@ -66,10 +84,14 @@ def _open_spreadsheet(spreadsheet_name: str):
 
 def _scrape_all_rosters(
     page: Page, player_names: list[str]
-) -> dict[str, list[Character]]:
-    """Scrape each player's full roster once. Returns {player: characters}."""
-    rosters: dict[str, list[Character]] = {}
-    for name in player_names:
+) -> dict[str, list[Character] | None]:
+    """Scrape each player's full roster once. Returns {player: characters}.
+
+    None marks a failed scrape: downstream writers must preserve that
+    player's existing sheet cells instead of blanking them.
+    """
+    rosters: dict[str, list[Character] | None] = {}
+    for i, name in enumerate(player_names):
         print(f"Scraping {name}...", flush=True, end=" ")
         try:
             chars = scrape_roster(page, name)
@@ -77,25 +99,31 @@ def _scrape_all_rosters(
             rosters[name] = chars
         except RuntimeError as e:
             print(f"\n{e}")
-            rosters[name] = []
+            rosters[name] = None
+        if i != len(player_names) - 1:
+            time.sleep(SCRAPE_DELAY_S + random.uniform(0.0, 0.5))
     return rosters
 
 
 def _filter_for_tab(
-    rosters: dict[str, list[Character]],
+    rosters: dict[str, list[Character] | None],
     tab_name: str,
     threshold: int,
     cap: int | None,
-) -> dict[str, list[Character]]:
+) -> dict[str, list[Character] | None]:
     """Apply tab-specific iLvl filtering to every cached roster, with status output."""
-    eligibility: dict[str, list[Character]] = {}
+    eligibility: dict[str, list[Character] | None] = {}
     for name, all_chars in rosters.items():
+        if all_chars is None:
+            eligibility[name] = None
+            print(f"  {name}: scrape FAILED - existing sheet data preserved.")
+            continue
         eligible = filter_and_sort(all_chars, threshold, cap)
         total = count_eligible(all_chars, threshold, cap)
         eligibility[name] = eligible
 
         if not eligible:
-            print(f"  {name}: 0 eligible characters for '{tab_name}', skipping.")
+            print(f"  {name}: 0 eligible characters for '{tab_name}'.")
         else:
             print(f"  {name}: {len(eligible)} eligible")
         if total > MAX_CHARS_PER_PLAYER:
@@ -108,25 +136,28 @@ def _filter_for_tab(
 
 def run_update(
     page: Page,
-    spreadsheet,
     sheets_service,
-    tab_names: list[str],
+    spreadsheet_id: str,
+    tabs: dict[str, tuple],
     player_names: list[str],
     overrides: dict,
     priority_players: list[str],
-    tab_player_lists: dict[str, list[str]] | None = None,
-) -> None:
+    single_player: bool,
+) -> list[str]:
     """Run the full update pipeline for the given tabs and players.
 
     Scrapes each player's roster once (regardless of tab count), then filters
-    per tab from the cached roster. Each tab is rewritten against its OWN
-    column-A player list (tab_player_lists) — using one shared list silently
-    clobbered any tab whose list differed from the first tab's.
-    """
-    tab_player_lists = tab_player_lists or {}
-    rosters = _scrape_all_rosters(page, player_names)
+    per tab from the cached roster. tabs maps each tab name to its pre-read
+    (worksheet, player_rows, existing) triple (see sheets.read_tab): each tab
+    is written against its OWN column-A player list, and neither this function
+    nor the writers read from the worksheet again.
 
-    for tab_name in tab_names:
+    Returns the names whose scrape failed (their sheet rows were preserved).
+    """
+    rosters = _scrape_all_rosters(page, player_names)
+    failed_players = [n for n in player_names if rosters[n] is None]
+
+    for tab_name, (ws, player_rows, existing) in tabs.items():
         result = get_threshold_and_cap(tab_name, overrides)
         if result is None:
             print(f"Skipping '{tab_name}' — could not parse iLvl threshold from tab name.")
@@ -137,23 +168,28 @@ def run_update(
         print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
         print_eligibility_for = rosters
-        if len(player_names) > 1:
-            # An explicit empty list means the tab's column A is empty: write
+        if not single_player:
+            # An empty player_rows means the tab's column A is empty: write
             # nothing there (rewrite no-ops on zero rows) rather than falling
             # back to the union and populating a deliberately empty tab.
-            tab_list = tab_player_lists[tab_name] if tab_name in tab_player_lists else player_names
+            tab_list = [n for _, n in player_rows]
             print_eligibility_for = {n: rosters.get(n, []) for n in tab_list}
         player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 
         print("Writing to sheet...", flush=True, end=" ")
-        if len(player_names) == 1:
-            update_player_rows(spreadsheet, tab_name, player_eligibility, sheets_service)
+        if single_player:
+            update_player_rows(
+                ws, spreadsheet_id, player_eligibility, player_rows, sheets_service
+            )
         else:
             ordered = sort_players(player_eligibility, priority=priority_players)
             rewrite_sheet_sorted(
-                spreadsheet, tab_name, player_eligibility, ordered, sheets_service
+                ws, spreadsheet_id, player_eligibility, ordered,
+                player_rows, existing, sheets_service,
             )
         print("done.")
+
+    return failed_players
 
 
 def _build_confirmation_prompt(
@@ -177,6 +213,7 @@ def _build_confirmation_prompt(
 def main() -> None:
     config = load_config()
     spreadsheet_name = config.get("spreadsheet_name", DEFAULT_SPREADSHEET_NAME)
+    spreadsheet_id = config.get("spreadsheet_id") or None
     priority_players = config.get("priority_players", [])
     overrides = config.get("overrides", {})
 
@@ -194,9 +231,11 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    creds, spreadsheet = _open_spreadsheet(spreadsheet_name)
+    creds, spreadsheet = _open_spreadsheet(spreadsheet_name, spreadsheet_id)
     sheets_service = build("sheets", "v4", credentials=creds)
-    all_tabs = get_tab_names(spreadsheet)
+    all_worksheets = spreadsheet.worksheets()
+    all_tabs = [ws.title for ws in all_worksheets]
+    ws_by_title = {ws.title: ws for ws in all_worksheets}
 
     if args.sheet and args.sheet not in all_tabs:
         print(f"Error: Sheet '{args.sheet}' not found in spreadsheet.")
@@ -205,11 +244,11 @@ def main() -> None:
 
     target_tabs = [args.sheet] if args.sheet else all_tabs
 
-    # Each tab's column A is its own source of truth; scrape the union so
-    # every tab can be rewritten against its own list.
-    tab_player_lists = {
-        tab: get_players_from_sheet(spreadsheet.worksheet(tab)) for tab in target_tabs
-    }
+    # Each tab's column A is its own source of truth; read each tab exactly
+    # once here and scrape the union so every tab can be written against its
+    # own list without any further reads.
+    tabs = {tab: (ws_by_title[tab], *read_tab(ws_by_title[tab])) for tab in target_tabs}
+    tab_player_lists = {tab: [n for _, n in tabs[tab][1]] for tab in target_tabs}
     sheet_player_names = list(
         dict.fromkeys(n for tab in target_tabs for n in tab_player_lists[tab])
     )
@@ -234,19 +273,26 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            run_update(
+            install_resource_blocking(page)
+            failed = run_update(
                 page=page,
-                spreadsheet=spreadsheet,
                 sheets_service=sheets_service,
-                tab_names=target_tabs,
+                spreadsheet_id=spreadsheet.id,
+                tabs=tabs,
                 player_names=target_players,
                 overrides=overrides,
                 priority_players=priority_players,
-                tab_player_lists=tab_player_lists,
+                single_player=resolved_player is not None,
             )
         finally:
             browser.close()
 
+    if failed:
+        print(
+            f"\nDone with {len(failed)} scrape failure(s): {', '.join(failed)}. "
+            "Their sheet rows were left unchanged."
+        )
+        sys.exit(1)
     print("\nAll done.")
 
 

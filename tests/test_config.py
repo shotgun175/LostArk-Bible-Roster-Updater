@@ -1,3 +1,7 @@
+import pytest
+from pathlib import Path
+
+import config as config_module
 from config import load_config, parse_threshold_from_tab, get_threshold_and_cap
 
 
@@ -55,14 +59,36 @@ def test_load_config_missing_file(tmp_path):
     assert load_config(str(tmp_path / "nope.json")) == {}
 
 
-def test_load_config_returns_full_object(tmp_path):
-    config_file = tmp_path / "config.json"
-    config_file.write_text(
-        '{"spreadsheet_name": "X", "priority_players": ["A"], "overrides": {}}'
-    )
-    result = load_config(str(config_file))
-    assert result == {
-        "spreadsheet_name": "X",
-        "priority_players": ["A"],
-        "overrides": {},
-    }
+def test_load_config_reads_utf8_accented_names(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_text('{"priority_players": ["Remiyà"]}', encoding="utf-8")
+    assert load_config(str(p))["priority_players"] == ["Remiyà"]
+
+
+def test_load_config_accepts_utf8_bom(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_bytes(b'\xef\xbb\xbf{"spreadsheet_name": "X"}')
+    assert load_config(str(p)) == {"spreadsheet_name": "X"}
+
+
+def test_load_config_malformed_json_exits_friendly(tmp_path, capsys):
+    p = tmp_path / "config.json"
+    p.write_text('{"a": 1,}', encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        load_config(str(p))
+    assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert "config.json" in out and "line" in out
+
+
+def test_load_config_non_utf8_exits_friendly(tmp_path, capsys):
+    p = tmp_path / "config.json"
+    p.write_bytes('{"n": "Remià"}'.encode("cp1252"))
+    with pytest.raises(SystemExit) as exc:
+        load_config(str(p))
+    assert exc.value.code == 1
+    assert "UTF-8" in capsys.readouterr().out
+
+
+def test_default_config_path_is_anchored_next_to_config_py():
+    assert config_module._CONFIG_PATH == Path(config_module.__file__).resolve().parent / "config.json"

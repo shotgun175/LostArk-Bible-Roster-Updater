@@ -1,22 +1,43 @@
 """Load config.json and parse iLvl thresholds from sheet tab names."""
 import json
 import re
+import sys
 from pathlib import Path
 
+_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
-def load_config(path: str = "config.json") -> dict:
-    """Read config.json. Returns {} when the file is missing.
+
+def load_config(path: str | None = None) -> dict:
+    """Read config.json (UTF-8, BOM tolerated). Returns {} when missing.
+
+    Defaults to the config.json next to this file so the tool works from any
+    working directory. Exits with an actionable message on malformed JSON or
+    a non-UTF-8 save instead of dumping a traceback.
 
     Recognized top-level keys:
-      - "spreadsheet_name": str — name of the Google Sheet to update
-      - "priority_players": list[str] — players that always appear at the top
-      - "overrides":        dict   — per-tab iLvl threshold/cap overrides
+      - "spreadsheet_id":   str - sheet id from the URL; when set, spreadsheet_name is ignored
+      - "spreadsheet_name": str - name of the Google Sheet to update
+      - "priority_players": list[str] - players that always appear at the top
+      - "overrides":        dict   - per-tab iLvl threshold/cap overrides
     """
-    config_path = Path(path)
+    config_path = Path(path) if path is not None else _CONFIG_PATH
     if not config_path.exists():
         return {}
-    with open(config_path) as f:
-        return json.load(f)
+    try:
+        with open(config_path, encoding="utf-8-sig") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(
+            f"Error: {config_path.name} is not valid JSON "
+            f"(line {e.lineno}, column {e.colno}). Fix it and re-run."
+        )
+        sys.exit(1)
+    except UnicodeDecodeError:
+        print(
+            f"Error: {config_path.name} is not valid UTF-8. Re-save it with "
+            "UTF-8 encoding (Notepad: Save As, Encoding: UTF-8)."
+        )
+        sys.exit(1)
 
 
 def parse_threshold_from_tab(tab_name: str) -> int | None:

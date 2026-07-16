@@ -51,7 +51,7 @@ playwright install chromium
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project (any name)
 2. In the left menu go to **APIs & Services → Library**, search for and enable both:
    - **Google Sheets API**
-   - **Google Drive API**
+   - **Google Drive API** (only needed when opening by spreadsheet_name; skip it if you set spreadsheet_id)
 3. Go to **APIs & Services → Credentials**, click **Create Credentials → Service account**
    - Give it any name, click through the remaining steps, and hit **Done**
 4. Click your new service account in the list, go to the **Keys** tab, click **Add Key → Create new key → JSON**
@@ -67,7 +67,7 @@ playwright install chromium
 copy config.example.json config.json
 ```
 
-Set `spreadsheet_name` to your Google Sheet name, list any `priority_players` who should always sort to the top, and add `overrides` for tabs whose iLvl threshold doesn't match the tab name. `config.json` is gitignored — your personal config never gets committed.
+Set `spreadsheet_name` to your Google Sheet name, or set `spreadsheet_id` to open the sheet directly by id: the id is the long token in the sheet's URL between `/d/` and `/edit`. When `spreadsheet_id` is set, `spreadsheet_name` is ignored and the Google Drive API (and its scope) is not needed. Then list any `priority_players` who should always sort to the top, and add `overrides` for tabs whose iLvl threshold doesn't match the tab name. `config.json` is gitignored; your personal config never gets committed.
 
 ---
 
@@ -105,7 +105,8 @@ python main.py --all
 
 - Column A is the source of truth for the player list — edit it directly to add/remove players
 - Player names must match exactly as they appear on lostark.bible
-- The tool stops reading column A when it hits a cell containing "Run"
+- The tool stops reading column A at the run-planner marker: a cell that is "Run" or starts with "Run " (e.g. "Run Planner"). Everything below it is never touched.
+- Each player should appear only once in column A. If two rows hold the same name (even with different capitalization), the tool warns at the start of the run; duplicate rows can end up blanked or written with the wrong player's data, so remove the duplicate row.
 
 ### Run planner (below the roster)
 
@@ -160,7 +161,7 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
 }
 ```
 
-`spreadsheet_name` and `priority_players` are also read from `config.json`. Both fall back to sensible defaults if absent (the default priority list is empty — i.e. no priority).
+`spreadsheet_name` and `priority_players` are also read from `config.json`. Both fall back to sensible defaults if absent (the default priority list is empty, i.e. no priority). `priority_players` entries are matched against column A case-insensitively, so capitalization differences between `config.json` and the sheet don't matter. A priority player who doesn't appear in a tab's column A is ignored for that tab, with a warning printed so you can check the spelling.
 
 | Form | Effect |
 |------|--------|
@@ -181,8 +182,8 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing) — no JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
 - **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
-- **`config.json` covers the sheet name, priority players, and iLvl threshold/cap** — `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
-- **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write) and Drive (read-only).
+- **`config.json` covers the sheet id/name, priority players, and iLvl threshold/cap**: `spreadsheet_id` (opens the sheet directly by key and takes precedence over the name), `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
+- **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write), plus Drive (read-only) only when opening by name.
 - **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A–G.
 
 ### Open questions / known fragility
@@ -190,7 +191,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-scanning lostark.bible's inline hydration script. There is no versioned contract to depend on — treat this as the primary maintenance risk. Failure modes are at least distinct now: a page with no roster key reports "check the character name", while a roster that exists but cannot be parsed reports a scraper/site-layout problem.
 - **Class names map to a fixed set.** `class_map.py` translates KR internal class names to NA names for a known set of classes; a new or renamed class shows as `Unknown` until the map is updated.
 - **No region support beyond NA** (see above) without a code change.
-- **No retry/backoff.** A timeout or load error for one player is logged and that player is skipped (treated as an empty roster) for the run.
+- **Bounded retry and politeness delay.** Each roster fetch is retried up to twice (2s then 5s backoff) on load errors and HTTP 429/503, with about a second's pause between players to stay polite to lostark.bible. A player whose fetch still fails keeps their existing sheet data, the run reports the failure, and the tool exits nonzero.
 - **Dependencies are version-pinned but not fully locked.** `requirements.txt` pins direct dependencies to known-good versions; transitive dependencies are not captured in a lockfile.
 
 ### Scope (out)
@@ -214,7 +215,7 @@ config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests
 config.example.json   Template config — copy to config.json and edit
-config.json           Spreadsheet name, priority players, threshold overrides (gitignored)
+config.json           Spreadsheet id/name, priority players, threshold overrides (gitignored)
 credentials.json      Google service account key (gitignored)
 LostArk Bible Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
 ```

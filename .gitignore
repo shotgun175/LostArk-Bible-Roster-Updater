@@ -21,3 +21,18 @@ desktop.ini
 
 # Logs
 *.log
+
+# Secrets (defense in depth)
+.env
+.env.*
+*.key
+*.pem
+token.json
+credentials*.json
+*service*account*.json
+
+# Build artifacts
+build/
+
+# Docs - internal plans, test plans, and session docs stay on disk, untracked
+docs/

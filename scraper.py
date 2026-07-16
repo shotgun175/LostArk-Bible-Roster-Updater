@@ -2,6 +2,8 @@
 import json
 import re
 import string
+import time
+from urllib.parse import quote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 
@@ -10,6 +12,8 @@ from models import Character, MAX_CHARS_PER_PLAYER
 
 BASE_URL = "https://lostark.bible/character/NA/{}/roster"
 TIMEOUT_MS = 30_000
+RETRY_DELAYS_S = (2.0, 5.0)  # backoff before attempt 2 and attempt 3
+_RETRYABLE_STATUSES = {429, 503}
 
 
 class RosterExtractionError(Exception):
@@ -18,6 +22,15 @@ class RosterExtractionError(Exception):
     Distinct from "the page has no roster" (extract_roster_json returns None):
     this means lostark.bible's inline data format changed and the scraper
     itself needs updating - not a character-name problem.
+    """
+
+
+class ScrapeFailedError(RuntimeError):
+    """The roster could not be fetched (timeout, load error, site failure).
+
+    Distinct from a name problem (plain RuntimeError telling the operator to
+    check the spelling): callers must preserve the player's existing sheet
+    data instead of treating the roster as empty.
     """
 
 
@@ -158,23 +171,91 @@ def _parse_roster_entry(entry: dict) -> Character | None:
         return None
 
 
+def _parse_entries(roster_entries: list, character_name: str) -> list[Character]:
+    """Parse raw roster entries, warning per unparseable entry.
+
+    Nameless placeholder entries are skipped silently (expected site noise).
+    Raises ScrapeFailedError when a non-empty list yields zero characters:
+    that is field-level site drift, not a name problem, and must be loud.
+    """
+    characters: list[Character] = []
+    for idx, entry in enumerate(roster_entries):
+        char = _parse_roster_entry(entry)
+        if char is not None:
+            characters.append(char)
+            continue
+        if isinstance(entry, dict) and not entry.get("name"):
+            continue
+        label = (isinstance(entry, dict) and entry.get("name")) or f"entry #{idx + 1}"
+        print(
+            f"Warning: skipping unparseable roster entry ({label}) "
+            f"for '{character_name}'."
+        )
+    if roster_entries and not characters:
+        raise ScrapeFailedError(
+            f"Error: none of the {len(roster_entries)} roster entries for "
+            f"'{character_name}' could be parsed - the site's data format "
+            "may have changed. Keeping their existing sheet data."
+        )
+    return characters
+
+
+_BLOCKED_RESOURCE_TYPES = {"image", "media", "font", "stylesheet"}
+
+
+def install_resource_blocking(page: Page) -> None:
+    """Abort heavy subresources: only the initial document is ever read."""
+    def _route(route):
+        if route.request.resource_type in _BLOCKED_RESOURCE_TYPES:
+            route.abort()
+        else:
+            route.continue_()
+    page.route("**/*", _route)
+
+
+def _goto_with_retry(page: Page, url: str):
+    """page.goto with bounded retries on load errors and 429/503 responses."""
+    attempts = 1 + len(RETRY_DELAYS_S)
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        if i:
+            time.sleep(RETRY_DELAYS_S[i - 1])
+        try:
+            response = page.goto(url, timeout=TIMEOUT_MS, wait_until="domcontentloaded")
+        except (PlaywrightTimeoutError, PlaywrightError) as exc:
+            last_exc = exc
+            continue
+        if response and response.status in _RETRYABLE_STATUSES and i < attempts - 1:
+            continue
+        return response
+    raise last_exc
+
+
 def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
     Raises RuntimeError with a user-facing message if character page not found.
-    Returns empty list on timeout or if page is unresponsive.
+    Raises ScrapeFailedError on timeout, load error, or a non-404 HTTP error
+    status (caller preserves sheet data).
 
     Caller owns the Playwright Page lifecycle so a single browser can be
     reused across many scrapes.
     """
-    url = BASE_URL.format(character_name)
+    url = BASE_URL.format(quote(character_name, safe=""))
     try:
-        response = page.goto(url, timeout=TIMEOUT_MS)
+        response = _goto_with_retry(page, url)
 
         if response and response.status == 404:
             raise RuntimeError(
                 f"Error: Could not find roster for '{character_name}' on lostark.bible — "
                 "check the character name/spelling in the Google Sheet."
+            )
+
+        if response and not response.ok and response.status != 404:
+            raise ScrapeFailedError(
+                f"Error: lostark.bible returned HTTP {response.status} for "
+                f"'{character_name}' - a site problem, not a name problem. "
+                "Keeping their existing sheet data."
             )
 
         # The roster array ships in the initial document's inline SvelteKit
@@ -198,11 +279,13 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
                 "name/spelling in the Google Sheet."
             )
 
-        return [c for entry in roster_entries if (c := _parse_roster_entry(entry)) is not None]
+        return _parse_entries(roster_entries, character_name)
 
-    except (PlaywrightTimeoutError, PlaywrightError):
-        print(f"Warning: Failed to load roster for '{character_name}' — skipping.")
-        return []
+    except (PlaywrightTimeoutError, PlaywrightError) as exc:
+        raise ScrapeFailedError(
+            f"Warning: Failed to load roster for '{character_name}' - "
+            "keeping their existing sheet data."
+        ) from exc
 
 
 def count_eligible(characters: list[Character], threshold: int, cap: int | None) -> int:

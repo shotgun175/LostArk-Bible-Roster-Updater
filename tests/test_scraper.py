@@ -1,5 +1,18 @@
-﻿from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
-from scraper import _parse_roster_entry, count_eligible, filter_and_sort
+from unittest.mock import MagicMock
+
+import pytest
+from playwright.sync_api import Error as PlaywrightError
+
+from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
+from scraper import (
+    ScrapeFailedError,
+    _parse_entries,
+    _parse_roster_entry,
+    count_eligible,
+    filter_and_sort,
+    install_resource_blocking,
+    scrape_roster,
+)
 
 
 def make_char(name: str, ilvl: int, cp: float = 5000.0, char_class: str = "Slayer") -> Character:
@@ -161,3 +174,145 @@ def test_parse_roster_entry_missing_combat_power_defaults_to_zero():
     char = _parse_roster_entry(entry)
     assert char is not None
     assert char.cp == 0.0
+
+
+def test_goto_uses_domcontentloaded(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(200)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_args.kwargs["wait_until"] == "domcontentloaded"
+
+
+def test_resource_blocking_aborts_images_and_continues_documents():
+    page = MagicMock()
+    install_resource_blocking(page)
+    handler = page.route.call_args.args[1]
+
+    image_route = MagicMock()
+    image_route.request.resource_type = "image"
+    handler(image_route)
+    image_route.abort.assert_called_once()
+
+    doc_route = MagicMock()
+    doc_route.request.resource_type = "document"
+    handler(doc_route)
+    doc_route.continue_.assert_called_once()
+
+
+def test_scrape_roster_raises_scrape_failed_on_load_error(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.side_effect = PlaywrightError("net::ERR_CONNECTION_RESET")
+    with pytest.raises(ScrapeFailedError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert "PlayerOne" in str(exc.value)
+    assert "existing sheet data" in str(exc.value)
+
+
+def _resp(status: int, text: str = "<html></html>") -> MagicMock:
+    r = MagicMock()
+    r.status = status
+    r.ok = 200 <= status < 300
+    r.text.return_value = text
+    return r
+
+
+def test_http_429_raises_site_problem_not_name_problem(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(429)
+    with pytest.raises(ScrapeFailedError) as exc:
+        scrape_roster(page, "PlayerOne")
+    msg = str(exc.value)
+    assert "429" in msg
+    assert "spelling" not in msg
+
+
+def test_http_404_is_still_a_name_problem():
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert not isinstance(exc.value, ScrapeFailedError)
+    assert "spelling" in str(exc.value)
+
+
+def test_url_percent_encodes_reserved_characters(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "a#b/c")
+    url = page.goto.call_args.args[0]
+    assert "a%23b%2Fc" in url and "#" not in url
+
+
+def test_url_percent_encodes_accented_names(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "Remiyà")
+    assert "Remiy%C3%A0" in page.goto.call_args.args[0]
+
+
+# --- retry/backoff ---
+
+
+def test_goto_retries_once_after_load_error(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
+    page = MagicMock()
+    good = _resp(200, text="<html></html>")
+    page.goto.side_effect = [PlaywrightError("reset"), good]
+    with pytest.raises(RuntimeError):  # empty page -> no roster key -> name error
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 2
+    assert sleeps == [2.0]
+
+
+def test_goto_retries_on_429_then_succeeds(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.side_effect = [_resp(429), _resp(429), _resp(200)]
+    with pytest.raises(RuntimeError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 3
+
+
+def test_goto_exhausted_retries_raise_scrape_failed(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
+    page = MagicMock()
+    page.goto.side_effect = PlaywrightError("reset")
+    with pytest.raises(ScrapeFailedError):
+        scrape_roster(page, "PlayerOne")
+    assert page.goto.call_count == 3
+    assert sleeps == [2.0, 5.0]
+
+
+# --- _parse_entries ---
+
+
+def test_parse_entries_warns_on_bad_entry_and_keeps_good_ones(capsys):
+    entries = [make_entry(name="Good"), make_entry(name="Bad", ilvl="not-a-number")]
+    result = _parse_entries(entries, "PlayerOne")
+    assert [c.name for c in result] == ["Good"]
+    out = capsys.readouterr().out
+    assert "Bad" in out and "Warning" in out
+
+
+def test_parse_entries_all_bad_raises_site_format_error():
+    entries = [make_entry(ilvl="x"), make_entry(ilvl="y")]
+    with pytest.raises(ScrapeFailedError) as exc:
+        _parse_entries(entries, "PlayerOne")
+    assert "data format" in str(exc.value)
+
+
+def test_parse_entries_nameless_placeholder_stays_silent(capsys):
+    entries = [make_entry(name="Good"), make_entry(name="")]
+    result = _parse_entries(entries, "PlayerOne")
+    assert len(result) == 1
+    assert "Warning" not in capsys.readouterr().out

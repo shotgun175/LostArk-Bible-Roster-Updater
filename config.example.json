@@ -1,4 +1,5 @@
 {
+  "spreadsheet_id": "",
   "spreadsheet_name": "Your Spreadsheet Name",
   "priority_players": ["PlayerOne", "PlayerTwo"],
   "overrides": {

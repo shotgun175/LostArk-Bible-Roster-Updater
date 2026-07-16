@@ -1,5 +1,6 @@
 """Google Sheets read/write for the Lost Ark roster updater."""
 from googleapiclient.discovery import Resource
+from gspread.utils import ValueInputOption
 
 from models import Character, MAX_CHARS_PER_PLAYER
 
@@ -77,7 +78,7 @@ def format_cell(character: Character) -> str:
 
 
 def sort_players(
-    player_eligibility: dict[str, list[Character]],
+    player_eligibility: dict[str, list[Character] | None],
     priority: list[str] | None = None,
 ) -> list[str]:
     """
@@ -85,58 +86,100 @@ def sort_players(
     Priority players come first (in given order), then remaining players
     sorted by eligible character count descending, tie-broken by sum of CP
     across all eligible characters descending.
+    A None value means the player's scrape failed; they sort as zero characters.
     """
     priority = priority or []
     all_nicknames = list(player_eligibility.keys())
-    priority_present = [p for p in priority if p in all_nicknames]
-    rest = [p for p in all_nicknames if p not in priority]
+    norm = {n.strip().lower(): n for n in all_nicknames}
+    priority_present: list[str] = []
+    for p in priority:
+        match = norm.get(p.strip().lower())
+        if match is None:
+            print(
+                f"Warning: priority player '{p}' (config.json) not found in "
+                "column A - check the spelling."
+            )
+        elif match not in priority_present:
+            priority_present.append(match)
+    priority_lower = {p.strip().lower() for p in priority}
+    rest = [n for n in all_nicknames if n.strip().lower() not in priority_lower]
 
     def sort_key(nickname: str) -> tuple[int, float]:
-        chars = player_eligibility[nickname]
+        chars = player_eligibility[nickname] or []
         return (-len(chars), -sum(c.cp for c in chars))
 
     rest.sort(key=sort_key)
     return priority_present + rest
 
 
-def get_players_from_sheet(worksheet) -> list[str]:
-    """Return character names from column A (rows DATA_START_ROW onward).
+def _is_run_marker(cell_text: str) -> bool:
+    """True for the column-A cell that starts the hand-maintained run planner.
 
-    Stops at the first cell containing 'Run' (the scheduling section marker),
-    so the player list and the run schedule can coexist in the same column.
+    Matches "Run" exactly or any cell starting with "Run " ("Run Planner",
+    "Run 1"), case-insensitive. Lost Ark character names cannot contain
+    spaces, so a real player ("Runeblade") can never false-positive.
     """
-    players = []
-    for v in worksheet.col_values(1)[HEADER_ROWS:]:
-        stripped = v.strip()
-        if stripped.lower() == "run":
+    lowered = cell_text.strip().lower()
+    return lowered == "run" or lowered.startswith("run ")
+
+
+def _warn_case_duplicate_names(player_rows: list[tuple[int, str]]) -> None:
+    """Warn once per group when column A has case-insensitive duplicate names.
+
+    Detection only: player_rows/existing are unchanged either way (an exact
+    duplicate overwrites existing by exact spelling; case-variants coexist as
+    separate keys) - this just flags the sheet for a human to fix.
+    """
+    groups: dict[str, list[tuple[int, str]]] = {}
+    for row_num, name in player_rows:
+        groups.setdefault(name.lower(), []).append((row_num, name))
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        row_nums = [r for r, _ in rows]
+        rows_str = ", ".join(str(r) for r in row_nums[:-1])
+        if len(row_nums) > 2:
+            rows_str += ","
+        rows_str += f" and {row_nums[-1]}"
+        spellings = list(dict.fromkeys(n for _, n in rows))
+        spelling_str = "/".join(f"'{s}'" for s in spellings)
+        verb = "both name" if len(rows) == 2 else "all name"
+        print(
+            f"Warning: column A rows {rows_str} {verb} {spelling_str} "
+            "(case-insensitive) - duplicate rows can be blanked or "
+            "cross-written; fix the sheet."
+        )
+
+
+def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
+    """Read a tab's roster rectangle once.
+
+    Returns (player_rows, existing): (1-based sheet row, name) for occupied
+    column-A cells, and current B..G values keyed by name. Blank spacer rows
+    keep their positions; the scan stops at the run-planner marker.
+    """
+    fetched = worksheet.get(f"A{DATA_START_ROW}:{_LAST_CHAR_COL}")
+    player_rows: list[tuple[int, str]] = []
+    existing: dict[str, list[str]] = {}
+    for offset, row in enumerate(fetched):
+        name = (row[0] if row else "").strip()
+        if _is_run_marker(name):
             break
-        if stripped:
-            players.append(stripped)
-    return players
-
-
-def get_tab_names(spreadsheet) -> list[str]:
-    """Return all worksheet tab names in the spreadsheet."""
-    return [ws.title for ws in spreadsheet.worksheets()]
-
-
-def _build_rich_text_cells(
-    ordered_players: list[str],
-    player_eligibility: dict[str, list[Character]],
-    base_row_0: int,
-) -> list[tuple[int, int, str]]:
-    return [
-        (base_row_0 + i, 1 + j, format_cell(c))
-        for i, name in enumerate(ordered_players)
-        for j, c in enumerate(player_eligibility.get(name, []))
-    ]
+        if not name:
+            continue
+        player_rows.append((DATA_START_ROW + offset, name))
+        existing[name] = list(row[1:]) + [""] * (MAX_CHARS_PER_PLAYER - (len(row) - 1))
+    _warn_case_duplicate_names(player_rows)
+    return player_rows, existing
 
 
 def rewrite_sheet_sorted(
-    spreadsheet,
-    tab_name: str,
-    player_eligibility: dict[str, list[Character]],
+    ws,
+    spreadsheet_id: str,
+    player_eligibility: dict[str, list[Character] | None],
     ordered_players: list[str],
+    player_rows: list[tuple[int, str]],
+    existing: dict[str, list[str]],
     sheets_service: Resource,
 ) -> None:
     """Rewrite columns A-G for all players in the given order.
@@ -145,47 +188,65 @@ def rewrite_sheet_sorted(
     network/API failure between a clear and a rewrite used to destroy column A
     (the documented source of truth). Stale rows beyond the new player list
     are blanked by padding the payload instead.
+
+    Works entirely from the pre-read player_rows/existing (see read_tab);
+    performs no reads of its own.
+    A None value means the scrape failed: the player's existing B-G cells are
+    carried forward from existing instead of being blanked.
     """
-    ws = spreadsheet.worksheet(tab_name)
-    current_names = get_players_from_sheet(ws)
-    num_rows = max(len(ordered_players), len(current_names))
+    last_occupied = player_rows[-1][0] if player_rows else DATA_START_ROW - 1
+    num_rows = max(len(ordered_players), last_occupied - DATA_START_ROW + 1)
     if num_rows == 0:
         return
 
     rows = []
     for name in ordered_players:
-        chars = player_eligibility.get(name, [])
-        row = [name] + [format_cell(c) for c in chars]
+        chars = player_eligibility.get(name)
+        if chars is None:
+            row = [name] + existing.get(name, [""] * MAX_CHARS_PER_PLAYER)
+        else:
+            row = [name] + [format_cell(c) for c in chars]
         while len(row) < _ROW_WIDTH:
             row.append("")
         rows.append(row)
     while len(rows) < num_rows:
         rows.append([""] * _ROW_WIDTH)
     # gspread 6: values first, range second (the old order is a deprecated shim).
-    # Relies on gspread's RAW value-input default: scraped character names are
-    # attacker-controllable via lostark.bible, so do NOT switch this to
-    # USER_ENTERED without sanitizing leading = + @ (formula injection).
-    ws.update(rows, f"A{DATA_START_ROW}")
+    # RAW is passed explicitly (scraped names are attacker-controllable); never
+    # switch to USER_ENTERED without sanitizing leading = + @.
+    ws.update(rows, f"A{DATA_START_ROW}", value_input_option=ValueInputOption.raw)
 
-    rich_text_cells = _build_rich_text_cells(
-        ordered_players, player_eligibility, DATA_START_ROW - 1
-    )
-    _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)
+    rich_text_cells = [
+        (DATA_START_ROW - 1 + i, 1 + j, text)
+        for i, row in enumerate(rows)
+        for j, text in enumerate(row[1:])
+        if text
+    ]
+    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)
 
 
 def update_player_rows(
-    spreadsheet,
-    tab_name: str,
-    player_eligibility: dict[str, list[Character]],
+    ws,
+    spreadsheet_id: str,
+    player_eligibility: dict[str, list[Character] | None],
+    player_rows: list[tuple[int, str]],
     sheets_service: Resource,
 ) -> None:
-    """Update only B-G for the players in player_eligibility, preserving sheet order."""
-    ws = spreadsheet.worksheet(tab_name)
-    player_names = get_players_from_sheet(ws)
+    """Update only B-G for the players in player_eligibility, preserving sheet order.
+
+    player_rows is the tab's pre-read column A (see read_tab); this function
+    performs no reads of its own.
+    A None value means the scrape failed: that player gets no B-G write at all.
+    """
+    eligibility_lower = {
+        name.lower(): chars
+        for name, chars in player_eligibility.items()
+        if chars is not None
+    }
     rows_to_update = [
-        (DATA_START_ROW + i, name)
-        for i, name in enumerate(player_names)
-        if name in player_eligibility
+        (row_num, name)
+        for row_num, name in player_rows
+        if name.lower() in eligibility_lower
     ]
     if not rows_to_update:
         return
@@ -193,7 +254,7 @@ def update_player_rows(
     cell_updates = []
     rich_text_cells: list[tuple[int, int, str]] = []
     for row_num, name in rows_to_update:
-        chars = player_eligibility[name]
+        chars = eligibility_lower[name.lower()]
         cells = [format_cell(c) for c in chars]
         while len(cells) < MAX_CHARS_PER_PLAYER:
             cells.append("")
@@ -201,8 +262,8 @@ def update_player_rows(
             {"range": f"B{row_num}:{_LAST_CHAR_COL}{row_num}", "values": [cells]}
         )
         rich_text_cells += [(row_num - 1, 1 + j, format_cell(c)) for j, c in enumerate(chars)]
-    # Same RAW value-input dependence as rewrite_sheet_sorted above: never
-    # switch to USER_ENTERED without sanitizing the scraped strings.
-    ws.batch_update(cell_updates)
+    # RAW is passed explicitly (scraped names are attacker-controllable); never
+    # switch to USER_ENTERED without sanitizing leading = + @.
+    ws.batch_update(cell_updates, value_input_option=ValueInputOption.raw)
 
-    _apply_rich_text(sheets_service, spreadsheet.id, ws.id, rich_text_cells)
+    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)

@@ -256,6 +256,12 @@ def test_bare_run_still_stops_the_read():
     assert _names(ws) == ["Alice"]
 
 
+def test_marker_raid_time_stops_the_read():
+    # Some tabs start their planner with "RAID TIME"; its rows are schedule cells, not players.
+    ws = _ws_with_col_a("Alice", "RAID TIME", "1 Wednesday", "8:00 PM", "2")
+    assert _names(ws) == ["Alice"]
+
+
 def test_player_name_containing_run_is_not_a_marker():
     # Character names cannot contain spaces, so "Runeblade" must stay a player.
     ws = _ws_with_col_a("Alice", "Runeblade", "Run")

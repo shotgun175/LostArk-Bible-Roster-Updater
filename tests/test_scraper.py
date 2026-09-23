@@ -11,6 +11,7 @@ from scraper import (
     count_eligible,
     filter_and_sort,
     install_resource_blocking,
+    lookup_name,
     scrape_roster,
 )
 
@@ -246,8 +247,38 @@ def test_http_404_is_still_a_name_problem():
     assert "spelling" in str(exc.value)
 
 
-def test_wrong_case_name_redirect_names_the_site_spelling():
-    # lostark.bible 301s a wrong-case roster URL to the canonical overview page.
+@pytest.mark.parametrize(
+    "typed, expected",
+    [
+        ("valslayer", "Valslayer"),
+        ("VALSLAYER", "Valslayer"),
+        ("PlanePlanet", "Planeplanet"),
+        ("Valslayer", "Valslayer"),
+        ("remiyà", "Remiyà"),
+        ("Vëïn", "Vëïn"),
+        ("", ""),
+    ],
+)
+def test_lookup_name_uses_the_games_one_capital_spelling(typed, expected):
+    assert lookup_name(typed) == expected
+
+
+def test_scrape_roster_looks_up_column_a_names_as_the_game_spells_them():
+    # Lost Ark only capitalizes the first letter, so a differently typed
+    # column A name is looked up in the game's spelling; the error still
+    # names the sheet's spelling so the operator can find the row.
+    page = MagicMock()
+    page.goto.return_value = _resp(404)
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "valSLAYER")
+    assert "/character/NA/Valslayer/roster" in page.goto.call_args.args[0]
+    assert "'valSLAYER'" in str(exc.value)
+
+
+def test_case_only_redirect_of_the_looked_up_name_is_a_plain_not_found():
+    # lostark.bible 301s a wrong-case roster URL to the canonical overview
+    # page. After normalization that page matches the looked-up spelling,
+    # so the cause is a missing roster, not capitalization.
     page = MagicMock()
     r = _resp(200)
     r.url = "https://lostark.bible/character/NA/Johnlander"
@@ -255,7 +286,21 @@ def test_wrong_case_name_redirect_names_the_site_spelling():
     with pytest.raises(RuntimeError) as exc:
         scrape_roster(page, "johnlander")
     msg = str(exc.value)
-    assert "'Johnlander'" in msg and "capitalization" in msg
+    assert "'johnlander'" in msg and "spelling" in msg
+    assert "capitalization" not in msg
+
+
+def test_site_spelling_that_differs_from_the_lookup_is_still_reported():
+    # Fallback for a site canonical form the one-capital rule does not
+    # produce: the message names the site's spelling.
+    page = MagicMock()
+    r = _resp(200)
+    r.url = "https://lostark.bible/character/NA/JohnLander"
+    page.goto.return_value = r
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "johnlander")
+    msg = str(exc.value)
+    assert "'JohnLander'" in msg and "capitalization" in msg
     assert "spelling" not in msg
 
 
@@ -264,9 +309,9 @@ def test_url_percent_encodes_reserved_characters(monkeypatch):
     page = MagicMock()
     page.goto.return_value = _resp(404)
     with pytest.raises(RuntimeError):
-        scrape_roster(page, "a#b/c")
+        scrape_roster(page, "A#b/c")
     url = page.goto.call_args.args[0]
-    assert "a%23b%2Fc" in url and "#" not in url
+    assert "A%23b%2Fc" in url and "#" not in url
 
 
 def test_url_percent_encodes_accented_names(monkeypatch):

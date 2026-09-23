@@ -201,7 +201,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - Reading the player list from anywhere other than the sheet's column A.
 - A stable API client (none is published by lostark.bible).
 - Unattended scheduling/automation — the tool is run manually before each raid week.
-- The sheet's run-planner formulas and layout — the tool only writes the roster table (columns A–G); everything below the "Run" or "Raid Time" row is owned by the spreadsheet itself.
+- The sheet's run-planner formulas and layout: the tool only writes the roster table (columns A-G); everything below the "Run" or "Raid Time" row is owned by the spreadsheet itself.
 
 ---
 

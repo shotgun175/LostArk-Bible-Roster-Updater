@@ -210,7 +210,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 main.py               CLI entry point — owns auth, Playwright lifetime, orchestration
 scraper.py            Roster scraping (takes a Page) + filter/sort/count logic
 sheets.py             Google Sheets read/write + rich text formatting
-class_map.py          KR internal class name → global NA class name (29 classes)
+class_map.py          KR internal class name → global NA class name (30 classes)
 config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests

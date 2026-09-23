@@ -5,7 +5,7 @@ KR names come from the ``class`` field in lostark.bible's embedded page JSON
 inline ``<script>`` tag).  These are stable internal identifiers used by the
 game server and are independent of the Svelte build.
 
-Last verified against live lostark.bible pages: 2026-06-11. To re-derive
+Last verified against live lostark.bible pages: 2026-09-23. To re-derive
 after a new class releases: open any roster page containing the new class,
 find its ``class`` value in the inline hydration script, and add the mapping
 here (the console warning below names the unmapped value when it appears).
@@ -25,6 +25,7 @@ CLASS_MAP: dict[str, str] = {
     "destroyer":          "Destroyer",
     "devil_hunter":       "Deadeye",
     "devil_hunter_female": "Gunslinger",
+    "dimension_master":   "Dimensionalist",
     "dragon_knight":      "Guardianknight",
     "elemental_master":   "Sorceress",
     "force_master":       "Soulfist",

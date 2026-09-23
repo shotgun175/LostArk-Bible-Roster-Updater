@@ -77,9 +77,10 @@ def _open_spreadsheet(spreadsheet_name: str, spreadsheet_id: str | None = None):
             spreadsheet = client.open(spreadsheet_name)
     except PermissionError:
         print(
-            "Error: the service account is not allowed to open this "
-            "spreadsheet. Share the sheet (Editor) with the client_email "
-            f"from '{CREDENTIALS_PATH}' - see the README."
+            "Error: the service account cannot open this spreadsheet. Either "
+            "the sheet is not shared (Editor) with the client_email from "
+            f"'{CREDENTIALS_PATH}', or the Google Sheets API is not enabled "
+            "in its Cloud project (README setup step 3.2)."
         )
         sys.exit(1)
     except gspread.SpreadsheetNotFound:

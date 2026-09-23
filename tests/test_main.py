@@ -303,7 +303,7 @@ def test_open_by_id_unshared_sheet_is_friendly(monkeypatch, capsys):
         main._open_spreadsheet("ignored", spreadsheet_id="abc123")
     assert exc.value.code == 1
     out = capsys.readouterr().out.lower()
-    assert "share" in out and "client_email" in out
+    assert "share" in out and "client_email" in out and "enabled" in out
 
 
 def test_open_by_name_still_uses_both_scopes(monkeypatch):

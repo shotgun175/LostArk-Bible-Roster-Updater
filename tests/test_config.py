@@ -90,5 +90,15 @@ def test_load_config_non_utf8_exits_friendly(tmp_path, capsys):
     assert "UTF-8" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("content", ["[]", "null"])
+def test_load_config_non_object_exits_friendly(tmp_path, capsys, content):
+    p = tmp_path / "config.json"
+    p.write_text(content, encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        load_config(str(p))
+    assert exc.value.code == 1
+    assert "JSON object" in capsys.readouterr().out
+
+
 def test_default_config_path_is_anchored_next_to_config_py():
     assert config_module._CONFIG_PATH == Path(config_module.__file__).resolve().parent / "config.json"

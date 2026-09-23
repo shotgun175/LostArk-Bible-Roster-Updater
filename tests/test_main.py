@@ -171,7 +171,7 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch, echo_r
     """A scrape failure must not masquerade as an empty roster: the writer
     receives None and run_update returns the failed player's name."""
     def boom(page, name):
-        raise main.ScrapeFailedError(f"down for {name}")
+        raise RuntimeError(f"down for {name}")
     monkeypatch.setattr(main, "scrape_roster", boom)
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
 

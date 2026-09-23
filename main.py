@@ -14,7 +14,6 @@ from config import load_config, get_threshold_and_cap
 from models import Character
 from scraper import (
     MAX_CHARS_PER_PLAYER,
-    ScrapeFailedError,
     count_eligible,
     filter_and_sort,
     install_resource_blocking,

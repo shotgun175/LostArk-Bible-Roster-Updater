@@ -207,7 +207,7 @@ def test_resource_blocking_aborts_images_and_continues_documents():
     doc_route.continue_.assert_called_once()
 
 
-def test_scrape_roster_raises_scrape_failed_on_load_error(monkeypatch):
+def test_scrape_roster_raises_site_failure_on_load_error(monkeypatch):
     monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
     page.goto.side_effect = PlaywrightError("net::ERR_CONNECTION_RESET")
@@ -298,7 +298,7 @@ def test_persistent_502_still_raises_site_problem(monkeypatch):
     assert "HTTP 502" in str(exc.value)
 
 
-def test_goto_exhausted_retries_raise_scrape_failed(monkeypatch):
+def test_goto_exhausted_retries_raise_site_failure(monkeypatch):
     sleeps: list[float] = []
     monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
     page = MagicMock()

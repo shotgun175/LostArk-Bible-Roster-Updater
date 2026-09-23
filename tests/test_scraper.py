@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -5,7 +6,6 @@ from playwright.sync_api import Error as PlaywrightError
 
 from models import Character, MAX_CHARS_PER_PLAYER as MAX_ELIGIBLE
 from scraper import (
-    ScrapeFailedError,
     _parse_entries,
     _parse_roster_entry,
     count_eligible,
@@ -169,6 +169,12 @@ def test_parse_roster_entry_null_combat_power_defaults_to_zero():
     assert char.cp == 0.0
 
 
+@pytest.mark.parametrize("combat_power", [5000.5, "5000", [5000]])
+def test_parse_roster_entry_non_object_combat_power_returns_none(combat_power):
+    entry = {"name": "X", "class": "berserker", "ilvl": 1730, "combatPower": combat_power}
+    assert _parse_roster_entry(entry) is None
+
+
 def test_parse_roster_entry_missing_combat_power_defaults_to_zero():
     entry = {"name": "X", "class": "berserker", "ilvl": 1730}
     char = _parse_roster_entry(entry)
@@ -201,11 +207,11 @@ def test_resource_blocking_aborts_images_and_continues_documents():
     doc_route.continue_.assert_called_once()
 
 
-def test_scrape_roster_raises_scrape_failed_on_load_error(monkeypatch):
+def test_scrape_roster_raises_site_failure_on_load_error(monkeypatch):
     monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
     page.goto.side_effect = PlaywrightError("net::ERR_CONNECTION_RESET")
-    with pytest.raises(ScrapeFailedError) as exc:
+    with pytest.raises(RuntimeError) as exc:
         scrape_roster(page, "PlayerOne")
     assert "PlayerOne" in str(exc.value)
     assert "existing sheet data" in str(exc.value)
@@ -223,7 +229,7 @@ def test_http_429_raises_site_problem_not_name_problem(monkeypatch):
     monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
     page.goto.return_value = _resp(429)
-    with pytest.raises(ScrapeFailedError) as exc:
+    with pytest.raises(RuntimeError) as exc:
         scrape_roster(page, "PlayerOne")
     msg = str(exc.value)
     assert "429" in msg
@@ -235,7 +241,7 @@ def test_http_404_is_still_a_name_problem():
     page.goto.return_value = _resp(404)
     with pytest.raises(RuntimeError) as exc:
         scrape_roster(page, "PlayerOne")
-    assert not isinstance(exc.value, ScrapeFailedError)
+    assert "existing sheet data" not in str(exc.value)
     assert "spelling" in str(exc.value)
 
 
@@ -273,24 +279,56 @@ def test_goto_retries_once_after_load_error(monkeypatch):
     assert sleeps == [2.0]
 
 
-def test_goto_retries_on_429_then_succeeds(monkeypatch):
+@pytest.mark.parametrize("status", [429, 502])
+def test_goto_retries_on_transient_status_then_succeeds(monkeypatch, status):
     monkeypatch.setattr("scraper.time.sleep", lambda s: None)
     page = MagicMock()
-    page.goto.side_effect = [_resp(429), _resp(429), _resp(200)]
+    page.goto.side_effect = [_resp(status), _resp(status), _resp(200)]
     with pytest.raises(RuntimeError):
         scrape_roster(page, "PlayerOne")
     assert page.goto.call_count == 3
 
 
-def test_goto_exhausted_retries_raise_scrape_failed(monkeypatch):
+def test_persistent_502_still_raises_site_problem(monkeypatch):
+    monkeypatch.setattr("scraper.time.sleep", lambda s: None)
+    page = MagicMock()
+    page.goto.return_value = _resp(502)
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert "HTTP 502" in str(exc.value)
+
+
+def test_goto_exhausted_retries_raise_site_failure(monkeypatch):
     sleeps: list[float] = []
     monkeypatch.setattr("scraper.time.sleep", lambda s: sleeps.append(s))
     page = MagicMock()
     page.goto.side_effect = PlaywrightError("reset")
-    with pytest.raises(ScrapeFailedError):
+    with pytest.raises(RuntimeError) as exc:
         scrape_roster(page, "PlayerOne")
     assert page.goto.call_count == 3
     assert sleeps == [2.0, 5.0]
+    assert "existing sheet data" in str(exc.value)
+
+
+# --- scrape_roster end to end on a real page ---
+
+
+def test_scrape_roster_parses_a_real_roster_page():
+    html = (Path(__file__).parent / "fixtures" / "valid_roster.html").read_text(encoding="utf-8")
+    page = MagicMock()
+    page.goto.return_value = _resp(200, text=html)
+    result = scrape_roster(page, "Char01")
+    assert len(result) == 14
+    assert result[0] == Character("Char01", 1795, 7120.76, "Bard")
+
+
+def test_scrape_roster_unparseable_roster_is_a_site_layout_error():
+    page = MagicMock()
+    page.goto.return_value = _resp(200, text="<script>kit.start({ roster:[ {name:'broken </script>")
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "PlayerOne")
+    assert "site-layout" in str(exc.value)
+    assert "spelling" not in str(exc.value)
 
 
 # --- _parse_entries ---
@@ -306,7 +344,7 @@ def test_parse_entries_warns_on_bad_entry_and_keeps_good_ones(capsys):
 
 def test_parse_entries_all_bad_raises_site_format_error():
     entries = [make_entry(ilvl="x"), make_entry(ilvl="y")]
-    with pytest.raises(ScrapeFailedError) as exc:
+    with pytest.raises(RuntimeError) as exc:
         _parse_entries(entries, "PlayerOne")
     assert "data format" in str(exc.value)
 

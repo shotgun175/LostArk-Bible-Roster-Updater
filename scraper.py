@@ -13,7 +13,7 @@ from models import Character, MAX_CHARS_PER_PLAYER
 BASE_URL = "https://lostark.bible/character/NA/{}/roster"
 TIMEOUT_MS = 30_000
 RETRY_DELAYS_S = (2.0, 5.0)  # backoff before attempt 2 and attempt 3
-_RETRYABLE_STATUSES = {429, 503}
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
 
 class RosterExtractionError(Exception):
@@ -22,15 +22,6 @@ class RosterExtractionError(Exception):
     Distinct from "the page has no roster" (extract_roster_json returns None):
     this means lostark.bible's inline data format changed and the scraper
     itself needs updating - not a character-name problem.
-    """
-
-
-class ScrapeFailedError(RuntimeError):
-    """The roster could not be fetched (timeout, load error, site failure).
-
-    Distinct from a name problem (plain RuntimeError telling the operator to
-    check the spelling): callers must preserve the player's existing sheet
-    data instead of treating the roster as empty.
     """
 
 
@@ -167,7 +158,7 @@ def _parse_roster_entry(entry: dict) -> Character | None:
         cp = float(cp_data.get("score", 0.0))
         char_class = get_class_from_name(kr_class)
         return Character(name=name, ilvl=ilvl, cp=cp, char_class=char_class)
-    except (KeyError, TypeError, ValueError):
+    except (AttributeError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -175,7 +166,7 @@ def _parse_entries(roster_entries: list, character_name: str) -> list[Character]
     """Parse raw roster entries, warning per unparseable entry.
 
     Nameless placeholder entries are skipped silently (expected site noise).
-    Raises ScrapeFailedError when a non-empty list yields zero characters:
+    Raises RuntimeError when a non-empty list yields zero characters:
     that is field-level site drift, not a name problem, and must be loud.
     """
     characters: list[Character] = []
@@ -192,7 +183,7 @@ def _parse_entries(roster_entries: list, character_name: str) -> list[Character]
             f"for '{character_name}'."
         )
     if roster_entries and not characters:
-        raise ScrapeFailedError(
+        raise RuntimeError(
             f"Error: none of the {len(roster_entries)} roster entries for "
             f"'{character_name}' could be parsed - the site's data format "
             "may have changed. Keeping their existing sheet data."
@@ -214,7 +205,7 @@ def install_resource_blocking(page: Page) -> None:
 
 
 def _goto_with_retry(page: Page, url: str):
-    """page.goto with bounded retries on load errors and 429/503 responses."""
+    """page.goto with bounded retries on load errors and 429/500/502/503/504 responses."""
     attempts = 1 + len(RETRY_DELAYS_S)
     last_exc: Exception | None = None
     for i in range(attempts):
@@ -235,7 +226,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
     Raises RuntimeError with a user-facing message if character page not found.
-    Raises ScrapeFailedError on timeout, load error, or a non-404 HTTP error
+    Raises RuntimeError on timeout, load error, or a non-404 HTTP error
     status (caller preserves sheet data).
 
     Caller owns the Playwright Page lifecycle so a single browser can be
@@ -252,7 +243,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
             )
 
         if response and not response.ok and response.status != 404:
-            raise ScrapeFailedError(
+            raise RuntimeError(
                 f"Error: lostark.bible returned HTTP {response.status} for "
                 f"'{character_name}' - a site problem, not a name problem. "
                 "Keeping their existing sheet data."
@@ -282,7 +273,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
         return _parse_entries(roster_entries, character_name)
 
     except (PlaywrightTimeoutError, PlaywrightError) as exc:
-        raise ScrapeFailedError(
+        raise RuntimeError(
             f"Warning: Failed to load roster for '{character_name}' - "
             "keeping their existing sheet data."
         ) from exc

@@ -5,6 +5,7 @@ from gspread.utils import ValueInputOption
 from models import Character
 from sheets import (
     DATA_START_ROW,
+    _text_format_runs,
     format_cell,
     read_tab,
     rewrite_sheet_sorted,
@@ -41,6 +42,52 @@ def test_format_cell_support_class():
     char = Character(name="SampleBard", ilvl=1750, cp=5700.0, char_class="Bard")
     result = format_cell(char)
     assert result == "SampleBard | 1750\nBard | 5700"
+
+
+# --- rich-text formatting ---
+
+def _format_requests(svc: MagicMock) -> list[dict]:
+    """The updateCells requests a writer sent through the formatting call."""
+    return svc.spreadsheets.return_value.batchUpdate.call_args.kwargs["body"]["requests"]
+
+
+def test_text_format_runs_start_indexes():
+    text = format_cell(Character(name="PlayerOne", ilvl=1755, cp=5915.7, char_class="Slayer"))
+    # "PlayerOne | 1755\nSlayer | 5916": name, " | 1755", class after the newline, " | 5916"
+    assert [r["startIndex"] for r in _text_format_runs(text)] == [0, 9, 17, 23]
+
+
+def test_text_format_runs_without_newline_is_empty():
+    assert _text_format_runs("PlayerOne | 1755") == []
+
+
+def test_text_format_runs_without_separator_is_empty():
+    assert _text_format_runs("PlayerOne 1755\nSlayer 5916") == []
+
+
+def test_update_player_rows_formats_the_real_row_past_a_spacer():
+    ws, svc = MagicMock(), MagicMock()
+    # Bob physically on sheet row 5
+    player_rows, _ = _rows_and_existing(("Alice", []), ("", []), ("Bob", []))
+    update_player_rows(ws, "sheet-id", {"Bob": [make_char(1750)]}, player_rows, svc)
+    [request] = _format_requests(svc)
+    start = request["updateCells"]["start"]
+    assert (start["rowIndex"], start["columnIndex"]) == (4, 1)
+
+
+def test_rewrite_formats_the_row_it_wrote_past_a_spacer():
+    ws, svc = MagicMock(), MagicMock()
+    player_rows, existing = _rows_and_existing(
+        ("Alice", []), ("Carol", []), ("", []), ("Bob", [])
+    )
+    rewrite_sheet_sorted(
+        ws, "sheet-id", {"Alice": [], "Carol": [], "Bob": [make_char(1750)]},
+        ["Alice", "Carol", "Bob"], player_rows, existing, svc,
+    )
+    assert ws.update.call_args.args[0][2][0] == "Bob"  # the values write put Bob on row 5
+    [request] = _format_requests(svc)
+    start = request["updateCells"]["start"]
+    assert (start["rowIndex"], start["columnIndex"]) == (4, 1)
 
 
 # --- sort_players ---
@@ -206,6 +253,12 @@ def test_marker_run_1_stops_the_read():
 
 def test_bare_run_still_stops_the_read():
     ws = _ws_with_col_a("Alice", "Run", "Pug")
+    assert _names(ws) == ["Alice"]
+
+
+def test_marker_raid_time_stops_the_read():
+    # Some tabs start their planner with "RAID TIME"; its rows are schedule cells, not players.
+    ws = _ws_with_col_a("Alice", "RAID TIME", "1 Wednesday", "8:00 PM", "2")
     assert _names(ws) == ["Alice"]
 
 

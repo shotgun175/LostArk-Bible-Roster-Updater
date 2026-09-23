@@ -171,7 +171,7 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch, echo_r
     """A scrape failure must not masquerade as an empty roster: the writer
     receives None and run_update returns the failed player's name."""
     def boom(page, name):
-        raise main.ScrapeFailedError(f"down for {name}")
+        raise RuntimeError(f"down for {name}")
     monkeypatch.setattr(main, "scrape_roster", boom)
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
 
@@ -280,6 +280,18 @@ def _auth_ok(monkeypatch):
     client = MagicMock()
     monkeypatch.setattr(main.gspread, "authorize", lambda creds: client)
     return creds_cls, client
+
+
+def test_open_spreadsheet_mounts_retry_and_sets_timeout(monkeypatch):
+    _, client = _auth_ok(monkeypatch)
+    main._open_spreadsheet("My Sheet")
+    prefix, adapter = client.http_client.session.mount.call_args.args
+    assert prefix == "https://"
+    retry = adapter.max_retries
+    assert 503 in retry.status_forcelist
+    assert retry.allowed_methods is None
+    assert retry.raise_on_status is False
+    client.set_timeout.assert_called_once_with((10, 60))
 
 
 def test_open_by_id_uses_open_by_key_and_sheets_scope_only(monkeypatch):

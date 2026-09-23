@@ -69,7 +69,7 @@ def _apply_rich_text(
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body={"requests": requests},
-        ).execute()
+        ).execute(num_retries=3)  # this client does not use gspread's retrying session
 
 
 def format_cell(character: Character) -> str:
@@ -115,12 +115,13 @@ def sort_players(
 def _is_run_marker(cell_text: str) -> bool:
     """True for the column-A cell that starts the hand-maintained run planner.
 
-    Matches "Run" exactly or any cell starting with "Run " ("Run Planner",
-    "Run 1"), case-insensitive. Lost Ark character names cannot contain
-    spaces, so a real player ("Runeblade") can never false-positive.
+    Matches "Run" or "Raid Time" exactly, or any cell starting with "Run " or
+    "Raid Time " ("Run Planner", "Run 1"), case-insensitive. Lost Ark
+    character names cannot contain spaces, so a real player ("Runeblade")
+    can never false-positive.
     """
     lowered = cell_text.strip().lower()
-    return lowered == "run" or lowered.startswith("run ")
+    return lowered in ("run", "raid time") or lowered.startswith(("run ", "raid time "))
 
 
 def _warn_case_duplicate_names(player_rows: list[tuple[int, str]]) -> None:

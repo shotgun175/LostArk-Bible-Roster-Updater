@@ -25,7 +25,7 @@ def load_config(path: str | None = None) -> dict:
         return {}
     try:
         with open(config_path, encoding="utf-8-sig") as f:
-            return json.load(f)
+            data = json.load(f)
     except json.JSONDecodeError as e:
         print(
             f"Error: {config_path.name} is not valid JSON "
@@ -38,6 +38,13 @@ def load_config(path: str | None = None) -> dict:
             "UTF-8 encoding (Notepad: Save As, Encoding: UTF-8)."
         )
         sys.exit(1)
+    if not isinstance(data, dict):
+        print(
+            f"Error: {config_path.name} must be a JSON object (start with '{{' "
+            "and end with '}'). Fix it and re-run."
+        )
+        sys.exit(1)
+    return data
 
 
 def parse_threshold_from_tab(tab_name: str) -> int | None:

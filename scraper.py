@@ -3,7 +3,7 @@ import json
 import re
 import string
 import time
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 
@@ -264,6 +264,15 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
             ) from exc
 
         if not roster_entries:
+            # A wrong-case name redirects to the canonical overview page.
+            m = re.search(r"/character/NA/([^/?#]+)$", (response.url if response else "") or "")
+            canonical = unquote(m.group(1)) if m else ""
+            if canonical != character_name and canonical.lower() == character_name.lower():
+                raise RuntimeError(
+                    f"Error: Could not find roster for '{character_name}' - "
+                    f"lostark.bible spells this character '{canonical}'; fix "
+                    "the capitalization in column A."
+                )
             raise RuntimeError(
                 f"Error: Could not find roster for '{character_name}' - "
                 "page loaded but returned no characters. Check the character "

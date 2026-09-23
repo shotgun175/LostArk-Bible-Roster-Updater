@@ -221,6 +221,7 @@ def _resp(status: int, text: str = "<html></html>") -> MagicMock:
     r = MagicMock()
     r.status = status
     r.ok = 200 <= status < 300
+    r.url = ""
     r.text.return_value = text
     return r
 
@@ -243,6 +244,19 @@ def test_http_404_is_still_a_name_problem():
         scrape_roster(page, "PlayerOne")
     assert "existing sheet data" not in str(exc.value)
     assert "spelling" in str(exc.value)
+
+
+def test_wrong_case_name_redirect_names_the_site_spelling():
+    # lostark.bible 301s a wrong-case roster URL to the canonical overview page.
+    page = MagicMock()
+    r = _resp(200)
+    r.url = "https://lostark.bible/character/NA/Johnlander"
+    page.goto.return_value = r
+    with pytest.raises(RuntimeError) as exc:
+        scrape_roster(page, "johnlander")
+    msg = str(exc.value)
+    assert "'Johnlander'" in msg and "capitalization" in msg
+    assert "spelling" not in msg
 
 
 def test_url_percent_encodes_reserved_characters(monkeypatch):

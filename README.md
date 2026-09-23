@@ -14,7 +14,7 @@ lostark.bible  →  scraper.py  →  sheets.py  →  Your roster sheet (Google S
 
 **Step by step:**
 
-1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" or "Raid Time" row)
+1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" row)
 2. Each player's lostark.bible roster page is scraped **once** up front, even when running `--all`: every player is fetched a single time
 3. For each target tab, the cached rosters are filtered by the iLvl threshold (and optional cap), derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
 4. Each player's eligible characters are sorted by iLvl descending, then combat power descending, capped at 6
@@ -42,7 +42,7 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-To refresh an existing venv later, run `pip install --upgrade --upgrade-strategy eager -r requirements.txt`, then step 2 again if the Playwright pin changed.
+To refresh an existing venv later, run `pip install --upgrade --upgrade-strategy eager -r requirements.txt`, then step 2 again if the Playwright pin changed. Packages removed from `requirements.txt` stay installed until you recreate the venv, which is harmless.
 
 **2. Install the browser (one-time, or after a Playwright update)**
 ```
@@ -108,13 +108,13 @@ python main.py --all
 
 - Column A is the source of truth for the player list; edit it directly to add/remove players
 - Player names must match exactly as they appear on lostark.bible
-- The tool stops reading column A at the run-planner marker: a cell that is "Run" or "Raid Time", or starts with "Run " or "Raid Time " (e.g. "Run Planner"), in any capitalization. Everything below it is never touched.
+- The tool stops reading column A at the run-planner marker: a cell that is "Run", or starts with "Run " (e.g. "Run Planner"), in any capitalization. Everything below it is never touched. Older tabs whose planner starts with "Raid Time" are also recognized.
 - Each player should appear only once in column A. If two rows hold the same name (even with different capitalization), the tool warns at the start of the run; duplicate rows can end up blanked or written with the wrong player's data, so remove the duplicate row.
 - If someone adds, removes or renames a row in a tab's column A while the tool is running, that tab is skipped and left untouched (so the run planner is never overwritten), and the tool exits nonzero. Re-run to update it.
 
 ### Run planner (below the roster)
 
-Below the "Run" or "Raid Time" row, there are 6 run slots for scheduling raid groups within the week. Each slot has two rows:
+Below the "Run" row, there are 6 run slots for scheduling raid groups within the week. Each slot has two rows:
 
 | Row | Columns B-I | Columns J-L |
 |-----|-------------|-------------|
@@ -141,7 +141,7 @@ You do not need to delete or hide columns when switching modes; just toggle the 
 
 ## Managing players
 
-Edit **column A** of the target tab directly (rows 3 and below, above the "Run" or "Raid Time" row). The tool reads this list fresh on every run. No code or config changes needed.
+Edit **column A** of the target tab directly (rows 3 and below, above the "Run" row). The tool reads this list fresh on every run. No code or config changes needed.
 
 ---
 
@@ -185,7 +185,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling, 
 
 - **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing). No JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
-- **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" or "Raid Time" cell). Names must match how they appear on lostark.bible exactly.
+- **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
 - **`config.json` covers the sheet id/name, priority players, and iLvl threshold/cap**: `spreadsheet_id` (opens the sheet directly by key and takes precedence over the name), `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
 - **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write), plus Drive (read-only) only when opening by name.
 - **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A-G.
@@ -204,7 +204,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling, 
 - Reading the player list from anywhere other than the sheet's column A.
 - A stable API client (none is published by lostark.bible).
 - Unattended scheduling/automation: the tool is run manually before each raid week.
-- The sheet's run-planner formulas and layout: the tool only writes the roster table (columns A-G); everything below the "Run" or "Raid Time" row is owned by the spreadsheet itself.
+- The sheet's run-planner formulas and layout: the tool only writes the roster table (columns A-G); everything below the "Run" row is owned by the spreadsheet itself.
 
 ---
 

@@ -106,10 +106,11 @@ def sort_players(
 def _is_run_marker(cell_text: str) -> bool:
     """True for the column-A cell that starts the hand-maintained run planner.
 
-    Matches "Run" or "Raid Time" exactly, or any cell starting with "Run " or
-    "Raid Time " ("Run Planner", "Run 1"), case-insensitive. Lost Ark
-    character names cannot contain spaces, so a real player ("Runeblade")
-    can never false-positive.
+    The marker is "Run", or any cell starting with "Run " ("Run Planner",
+    "Run 1"), case-insensitive. "Raid Time" (exact, or followed by a space)
+    is also accepted, but only as a legacy fallback for older tabs; new tabs
+    use "Run". Lost Ark character names cannot contain spaces, so a real
+    player ("Runeblade") can never false-positive.
     """
     lowered = cell_text.strip().lower()
     return lowered in ("run", "raid time") or lowered.startswith(("run ", "raid time "))

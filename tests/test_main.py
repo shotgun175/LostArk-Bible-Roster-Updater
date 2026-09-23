@@ -68,7 +68,7 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch, echo_read_tab):
 
 def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch, echo_read_tab):
     """A tab whose column A is empty must not be back-filled with the union
-    list — the rewrite should receive an empty eligibility and no-op."""
+    list; the rewrite should receive an empty eligibility and no-op."""
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
 

@@ -55,7 +55,7 @@ def get_class_from_name(kr_name: str) -> str:
     eng_name = CLASS_MAP.get(kr_name)
     if eng_name is None:
         print(
-            f"Warning: unmapped class '{kr_name}' from lostark.bible — writing "
+            f"Warning: unmapped class '{kr_name}' from lostark.bible - writing "
             "'Unknown'. A new class may have released; add it to class_map.py."
         )
         return "Unknown"

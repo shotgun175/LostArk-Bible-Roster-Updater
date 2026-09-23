@@ -153,7 +153,7 @@ def test_player_with_zero_eligible_chars_sorts_last():
 
 
 def test_sort_players_no_priority_argument():
-    # Default priority is None / empty — sort purely by count then CP.
+    # Default priority is None / empty: sort purely by count then CP.
     eligibility = {
         "A": [make_char(1755)] * 2,
         "B": [make_char(1755)] * 5,
@@ -194,7 +194,7 @@ def test_rewrite_overwrites_the_full_rectangle_with_values_first():
     args, kwargs = ws.update.call_args
     rows = args[0] if args else kwargs["values"]
     assert isinstance(rows, list), "values must be the first positional argument"
-    assert len(rows) == 3  # max(ordered, current) — Carol's old row gets blanked
+    assert len(rows) == 3  # max(ordered, current), so Carol's old row gets blanked
     assert all(len(r) == 7 for r in rows)  # A + B..G
     assert rows[2] == [""] * 7
     range_arg = args[1] if len(args) > 1 else kwargs.get("range_name")

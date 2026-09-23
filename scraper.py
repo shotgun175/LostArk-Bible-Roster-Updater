@@ -238,7 +238,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
 
         if response and response.status == 404:
             raise RuntimeError(
-                f"Error: Could not find roster for '{character_name}' on lostark.bible — "
+                f"Error: Could not find roster for '{character_name}' on lostark.bible - "
                 "check the character name/spelling in the Google Sheet."
             )
 
@@ -265,7 +265,7 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
 
         if not roster_entries:
             raise RuntimeError(
-                f"Error: Could not find roster for '{character_name}' — "
+                f"Error: Could not find roster for '{character_name}' - "
                 "page loaded but returned no characters. Check the character "
                 "name/spelling in the Google Sheet."
             )

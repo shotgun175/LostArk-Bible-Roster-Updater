@@ -173,11 +173,11 @@ def run_update(
     for tab_name, (ws, player_rows, existing) in tabs.items():
         result = get_threshold_and_cap(tab_name, overrides)
         if result is None:
-            print(f"Skipping '{tab_name}' — could not parse iLvl threshold from tab name.")
+            print(f"Skipping '{tab_name}' - could not parse iLvl threshold from tab name.")
             continue
         threshold, cap = result
 
-        range_label = f"{threshold}–{cap}" if cap is not None else f"{threshold}+"
+        range_label = f"{threshold}-{cap}" if cap is not None else f"{threshold}+"
         print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
         print_eligibility_for = rosters

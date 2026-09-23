@@ -107,6 +107,7 @@ python main.py --all
 - Player names must match exactly as they appear on lostark.bible
 - The tool stops reading column A at the run-planner marker: a cell that is "Run" or starts with "Run " (e.g. "Run Planner"). Everything below it is never touched.
 - Each player should appear only once in column A. If two rows hold the same name (even with different capitalization), the tool warns at the start of the run; duplicate rows can end up blanked or written with the wrong player's data, so remove the duplicate row.
+- If someone adds, removes or renames a row in a tab's column A while the tool is running, that tab is skipped and left untouched (so the run planner is never overwritten), and the tool exits nonzero. Re-run to update it.
 
 ### Run planner (below the roster)
 
@@ -210,7 +211,7 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 main.py               CLI entry point — owns auth, Playwright lifetime, orchestration
 scraper.py            Roster scraping (takes a Page) + filter/sort/count logic
 sheets.py             Google Sheets read/write + rich text formatting
-class_map.py          KR internal class name → global NA class name (29 classes)
+class_map.py          KR internal class name → global NA class name (30 classes)
 config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests

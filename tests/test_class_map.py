@@ -12,3 +12,8 @@ def test_unknown_class_warns_and_returns_unknown(capsys):
     out = capsys.readouterr().out
     assert "brand_new_kr_class" in out
     assert "class_map.py" in out
+
+
+def test_dimensionalist_maps_silently(capsys):
+    assert get_class_from_name("dimension_master") == "Dimensionalist"
+    assert capsys.readouterr().out == ""

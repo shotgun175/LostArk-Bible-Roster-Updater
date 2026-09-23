@@ -143,19 +143,23 @@ def run_update(
     overrides: dict,
     priority_players: list[str],
     single_player: bool,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """Run the full update pipeline for the given tabs and players.
 
     Scrapes each player's roster once (regardless of tab count), then filters
     per tab from the cached roster. tabs maps each tab name to its pre-read
     (worksheet, player_rows, existing) triple (see sheets.read_tab): each tab
-    is written against its OWN column-A player list, and neither this function
-    nor the writers read from the worksheet again.
+    is written against its OWN column-A player list. Just before writing a
+    tab, its column A is read once more; if it no longer matches the snapshot
+    the tab is left untouched. The writers never read from the worksheet.
 
-    Returns the names whose scrape failed (their sheet rows were preserved).
+    Returns (failed_players, skipped_tabs): the names whose scrape failed
+    (their sheet rows were preserved) and the tabs skipped because column A
+    changed during the run.
     """
     rosters = _scrape_all_rosters(page, player_names)
     failed_players = [n for n in player_names if rosters[n] is None]
+    skipped_tabs: list[str] = []
 
     for tab_name, (ws, player_rows, existing) in tabs.items():
         result = get_threshold_and_cap(tab_name, overrides)
@@ -176,6 +180,14 @@ def run_update(
             print_eligibility_for = {n: rosters.get(n, []) for n in tab_list}
         player_eligibility = _filter_for_tab(print_eligibility_for, tab_name, threshold, cap)
 
+        # The snapshot's row numbers are minutes old by now; if anyone edited
+        # column A since, writing at those rows could overwrite the run planner.
+        current_rows, _ = read_tab(ws)
+        if current_rows != player_rows:
+            print(f"Skipping '{tab_name}': column A changed during the run - re-run to update it.")
+            skipped_tabs.append(tab_name)
+            continue
+
         print("Writing to sheet...", flush=True, end=" ")
         if single_player:
             update_player_rows(
@@ -189,7 +201,7 @@ def run_update(
             )
         print("done.")
 
-    return failed_players
+    return failed_players, skipped_tabs
 
 
 def _build_confirmation_prompt(
@@ -244,9 +256,9 @@ def main() -> None:
 
     target_tabs = [args.sheet] if args.sheet else all_tabs
 
-    # Each tab's column A is its own source of truth; read each tab exactly
-    # once here and scrape the union so every tab can be written against its
-    # own list without any further reads.
+    # Each tab's column A is its own source of truth; read each tab once here
+    # and scrape the union so every tab can be written against its own list
+    # (run_update re-reads column A once per tab just before writing it).
     tabs = {tab: (ws_by_title[tab], *read_tab(ws_by_title[tab])) for tab in target_tabs}
     tab_player_lists = {tab: [n for _, n in tabs[tab][1]] for tab in target_tabs}
     sheet_player_names = list(
@@ -270,11 +282,11 @@ def main() -> None:
         sys.exit(0)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, chromium_sandbox=True)
         try:
             page = browser.new_page()
             install_resource_blocking(page)
-            failed = run_update(
+            failed, skipped = run_update(
                 page=page,
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet.id,
@@ -287,11 +299,17 @@ def main() -> None:
         finally:
             browser.close()
 
+    if skipped:
+        print(
+            f"\nSkipped {len(skipped)} tab(s) because column A changed during "
+            f"the run: {', '.join(skipped)}. Re-run to update them."
+        )
     if failed:
         print(
             f"\nDone with {len(failed)} scrape failure(s): {', '.join(failed)}. "
             "Their sheet rows were left unchanged."
         )
+    if failed or skipped:
         sys.exit(1)
     print("\nAll done.")
 

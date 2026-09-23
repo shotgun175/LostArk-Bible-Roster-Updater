@@ -46,9 +46,9 @@ def test_format_cell_support_class():
 
 # --- rich-text formatting ---
 
-def _format_requests(svc: MagicMock) -> list[dict]:
+def _format_requests(ws: MagicMock) -> list[dict]:
     """The updateCells requests a writer sent through the formatting call."""
-    return svc.spreadsheets.return_value.batchUpdate.call_args.kwargs["body"]["requests"]
+    return ws.spreadsheet.batch_update.call_args.args[0]["requests"]
 
 
 def test_text_format_runs_start_indexes():
@@ -66,26 +66,26 @@ def test_text_format_runs_without_separator_is_empty():
 
 
 def test_update_player_rows_formats_the_real_row_past_a_spacer():
-    ws, svc = MagicMock(), MagicMock()
+    ws = MagicMock()
     # Bob physically on sheet row 5
     player_rows, _ = _rows_and_existing(("Alice", []), ("", []), ("Bob", []))
-    update_player_rows(ws, "sheet-id", {"Bob": [make_char(1750)]}, player_rows, svc)
-    [request] = _format_requests(svc)
+    update_player_rows(ws, {"Bob": [make_char(1750)]}, player_rows)
+    [request] = _format_requests(ws)
     start = request["updateCells"]["start"]
     assert (start["rowIndex"], start["columnIndex"]) == (4, 1)
 
 
 def test_rewrite_formats_the_row_it_wrote_past_a_spacer():
-    ws, svc = MagicMock(), MagicMock()
+    ws = MagicMock()
     player_rows, existing = _rows_and_existing(
         ("Alice", []), ("Carol", []), ("", []), ("Bob", [])
     )
     rewrite_sheet_sorted(
-        ws, "sheet-id", {"Alice": [], "Carol": [], "Bob": [make_char(1750)]},
-        ["Alice", "Carol", "Bob"], player_rows, existing, svc,
+        ws, {"Alice": [], "Carol": [], "Bob": [make_char(1750)]},
+        ["Alice", "Carol", "Bob"], player_rows, existing,
     )
     assert ws.update.call_args.args[0][2][0] == "Bob"  # the values write put Bob on row 5
-    [request] = _format_requests(svc)
+    [request] = _format_requests(ws)
     start = request["updateCells"]["start"]
     assert (start["rowIndex"], start["columnIndex"]) == (4, 1)
 
@@ -171,8 +171,8 @@ def test_rewrite_never_clears_before_writing():
     player_rows, existing = _rows_and_existing(("Alice", []), ("Bob", []))
 
     rewrite_sheet_sorted(
-        ws, "sheet-id", {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"],
-        player_rows, existing, MagicMock(),
+        ws, {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"],
+        player_rows, existing,
     )
 
     ws.batch_clear.assert_not_called()
@@ -187,8 +187,8 @@ def test_rewrite_overwrites_the_full_rectangle_with_values_first():
     player_rows, existing = _rows_and_existing(("Alice", []), ("Bob", []), ("Carol", []))
 
     rewrite_sheet_sorted(
-        ws, "sheet-id", {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"],
-        player_rows, existing, MagicMock(),
+        ws, {"Alice": [make_char(1750)], "Bob": []}, ["Alice", "Bob"],
+        player_rows, existing,
     )
 
     args, kwargs = ws.update.call_args
@@ -203,13 +203,13 @@ def test_rewrite_overwrites_the_full_rectangle_with_values_first():
 
 def test_rewrite_passes_raw_value_input_explicitly():
     ws = MagicMock()
-    rewrite_sheet_sorted(ws, "sid", {"Alice": [make_char(1750)]}, ["Alice"], [(3, "Alice")], {}, MagicMock())
+    rewrite_sheet_sorted(ws, {"Alice": [make_char(1750)]}, ["Alice"], [(3, "Alice")], {})
     assert ws.update.call_args.kwargs["value_input_option"] == ValueInputOption.raw
 
 
 def test_update_passes_raw_value_input_explicitly():
     ws = MagicMock()
-    update_player_rows(ws, "sid", {"Alice": [make_char(1750)]}, [(3, "Alice")], MagicMock())
+    update_player_rows(ws, {"Alice": [make_char(1750)]}, [(3, "Alice")])
     assert ws.batch_update.call_args.kwargs["value_input_option"] == ValueInputOption.raw
 
 
@@ -310,9 +310,9 @@ def test_rewrite_preserves_cells_and_name_for_failed_scrape():
     )
 
     rewrite_sheet_sorted(
-        ws, "sheet-id",
+        ws,
         {"Alice": None, "Bob": [make_char(1760)]},
-        ["Bob", "Alice"], player_rows, existing, MagicMock(),
+        ["Bob", "Alice"], player_rows, existing,
     )
 
     rows = ws.update.call_args.args[0]
@@ -325,7 +325,7 @@ def test_rewrite_preserves_cells_and_name_for_failed_scrape():
 def test_update_player_rows_skips_failed_scrape_entirely():
     ws = MagicMock()
     player_rows, _ = _rows_and_existing(("Alice", []))
-    update_player_rows(ws, "sheet-id", {"Alice": None}, player_rows, MagicMock())
+    update_player_rows(ws, {"Alice": None}, player_rows)
     ws.batch_update.assert_not_called()
 
 
@@ -335,7 +335,7 @@ def test_update_player_rows_writes_to_real_row_past_a_spacer():
     ws = MagicMock()
     # Bob physically on sheet row 5
     player_rows, _ = _rows_and_existing(("Alice", []), ("", []), ("Bob", []))
-    update_player_rows(ws, "sheet-id", {"Bob": [make_char(1750)]}, player_rows, MagicMock())
+    update_player_rows(ws, {"Bob": [make_char(1750)]}, player_rows)
     ranges = [u["range"] for u in ws.batch_update.call_args.args[0]]
     assert ranges == ["B5:G5"]
 
@@ -345,7 +345,7 @@ def test_rewrite_blanks_through_last_occupied_row_past_a_spacer():
     # last occupied row = 5 -> 3 payload rows
     player_rows, existing = _rows_and_existing(("Alice", []), ("", []), ("Bob", []))
     rewrite_sheet_sorted(
-        ws, "sheet-id", {"Alice": [make_char(1750)]}, ["Alice"], player_rows, existing, MagicMock()
+        ws, {"Alice": [make_char(1750)]}, ["Alice"], player_rows, existing
     )
     rows = ws.update.call_args.args[0]
     assert len(rows) == 3  # rows 3-5 covered, so old row-5 "Bob" cannot survive
@@ -357,7 +357,7 @@ def test_rewrite_blanks_through_last_occupied_row_past_a_spacer():
 def test_update_player_rows_matches_column_a_case_insensitively():
     ws = MagicMock()
     player_rows, _ = _rows_and_existing(("valslayer", []))  # sheet spells it lowercase
-    update_player_rows(ws, "sheet-id", {"Valslayer": [make_char(1750)]}, player_rows, MagicMock())
+    update_player_rows(ws, {"Valslayer": [make_char(1750)]}, player_rows)
     ranges = [u["range"] for u in ws.batch_update.call_args.args[0]]
     assert ranges == ["B3:G3"]
 
@@ -380,7 +380,7 @@ def test_unmatched_priority_player_warns(capsys):
 def test_writers_do_no_reads():
     ws = MagicMock()
     player_rows, existing = [(3, "Alice")], {"Alice": [""] * 6}
-    rewrite_sheet_sorted(ws, "sid", {"Alice": [make_char(1750)]}, ["Alice"], player_rows, existing, MagicMock())
-    update_player_rows(ws, "sid", {"Alice": [make_char(1750)]}, player_rows, MagicMock())
+    rewrite_sheet_sorted(ws, {"Alice": [make_char(1750)]}, ["Alice"], player_rows, existing)
+    update_player_rows(ws, {"Alice": [make_char(1750)]}, player_rows)
     ws.get.assert_not_called()
     ws.col_values.assert_not_called()

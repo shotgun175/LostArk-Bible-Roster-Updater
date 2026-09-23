@@ -282,7 +282,7 @@ def main() -> None:
         sys.exit(0)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, chromium_sandbox=True)
         try:
             page = browser.new_page()
             install_resource_blocking(page)

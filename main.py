@@ -9,6 +9,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from playwright.sync_api import Page, sync_playwright
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from config import load_config, get_threshold_and_cap
 from models import Character
@@ -58,6 +60,17 @@ def _open_spreadsheet(spreadsheet_name: str, spreadsheet_id: str | None = None):
         )
         sys.exit(1)
     client = gspread.authorize(creds)
+    # Retry timeouts and 408/429/500/502/503/504 with 0/4/8 s backoff. Every
+    # call is a read or an idempotent overwrite, so POST/PUT retry too; the
+    # last failure still surfaces as gspread's normal APIError.
+    client.http_client.session.mount("https://", HTTPAdapter(max_retries=Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=(408, 429, 500, 502, 503, 504),
+        allowed_methods=None,
+        raise_on_status=False,
+    )))
+    client.set_timeout((10, 60))
     try:
         if spreadsheet_id:
             spreadsheet = client.open_by_key(spreadsheet_id)

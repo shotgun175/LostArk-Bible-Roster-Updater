@@ -282,6 +282,18 @@ def _auth_ok(monkeypatch):
     return creds_cls, client
 
 
+def test_open_spreadsheet_mounts_retry_and_sets_timeout(monkeypatch):
+    _, client = _auth_ok(monkeypatch)
+    main._open_spreadsheet("My Sheet")
+    prefix, adapter = client.http_client.session.mount.call_args.args
+    assert prefix == "https://"
+    retry = adapter.max_retries
+    assert 503 in retry.status_forcelist
+    assert retry.allowed_methods is None
+    assert retry.raise_on_status is False
+    client.set_timeout.assert_called_once_with((10, 60))
+
+
 def test_open_by_id_uses_open_by_key_and_sheets_scope_only(monkeypatch):
     creds_cls, client = _auth_ok(monkeypatch)
     main._open_spreadsheet("ignored", spreadsheet_id="abc123")

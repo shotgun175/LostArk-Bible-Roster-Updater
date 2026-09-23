@@ -69,7 +69,7 @@ def _apply_rich_text(
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body={"requests": requests},
-        ).execute()
+        ).execute(num_retries=3)  # this client does not use gspread's retrying session
 
 
 def format_cell(character: Character) -> str:

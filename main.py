@@ -7,7 +7,6 @@ from pathlib import Path
 
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 from playwright.sync_api import Page, sync_playwright
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -91,7 +90,7 @@ def _open_spreadsheet(spreadsheet_name: str, spreadsheet_id: str | None = None):
             f"account's client_email from '{CREDENTIALS_PATH}' - see the README."
         )
         sys.exit(1)
-    return creds, spreadsheet
+    return spreadsheet
 
 
 def _scrape_all_rosters(
@@ -148,8 +147,6 @@ def _filter_for_tab(
 
 def run_update(
     page: Page,
-    sheets_service,
-    spreadsheet_id: str,
     tabs: dict[str, tuple],
     player_names: list[str],
     overrides: dict,
@@ -176,11 +173,11 @@ def run_update(
     for tab_name, (ws, player_rows, existing) in tabs.items():
         result = get_threshold_and_cap(tab_name, overrides)
         if result is None:
-            print(f"Skipping '{tab_name}' — could not parse iLvl threshold from tab name.")
+            print(f"Skipping '{tab_name}' - could not parse iLvl threshold from tab name.")
             continue
         threshold, cap = result
 
-        range_label = f"{threshold}–{cap}" if cap is not None else f"{threshold}+"
+        range_label = f"{threshold}-{cap}" if cap is not None else f"{threshold}+"
         print(f"\n--- Updating '{tab_name}' (ilvl: {range_label}) ---")
 
         print_eligibility_for = rosters
@@ -202,15 +199,10 @@ def run_update(
 
         print("Writing to sheet...", flush=True, end=" ")
         if single_player:
-            update_player_rows(
-                ws, spreadsheet_id, player_eligibility, player_rows, sheets_service
-            )
+            update_player_rows(ws, player_eligibility, player_rows)
         else:
             ordered = sort_players(player_eligibility, priority=priority_players)
-            rewrite_sheet_sorted(
-                ws, spreadsheet_id, player_eligibility, ordered,
-                player_rows, existing, sheets_service,
-            )
+            rewrite_sheet_sorted(ws, player_eligibility, ordered, player_rows, existing)
         print("done.")
 
     return failed_players, skipped_tabs
@@ -255,8 +247,7 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    creds, spreadsheet = _open_spreadsheet(spreadsheet_name, spreadsheet_id)
-    sheets_service = build("sheets", "v4", credentials=creds)
+    spreadsheet = _open_spreadsheet(spreadsheet_name, spreadsheet_id)
     all_worksheets = spreadsheet.worksheets()
     all_tabs = [ws.title for ws in all_worksheets]
     ws_by_title = {ws.title: ws for ws in all_worksheets}
@@ -300,8 +291,6 @@ def main() -> None:
             install_resource_blocking(page)
             failed, skipped = run_update(
                 page=page,
-                sheets_service=sheets_service,
-                spreadsheet_id=spreadsheet.id,
                 tabs=tabs,
                 player_names=target_players,
                 overrides=overrides,

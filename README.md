@@ -2,7 +2,7 @@
 
 Scrapes character rosters from [lostark.bible](https://lostark.bible) and writes each player's eligible characters to your roster Google Sheet. Run it once before each raid week to keep everyone's roster current.
 
-Part of [Lost Ark Tools](https://shotgun175.github.io/) — see all tools.
+Part of [Lost Ark Tools](https://shotgun175.github.io/): see all tools.
 
 ---
 
@@ -14,11 +14,11 @@ lostark.bible  →  scraper.py  →  sheets.py  →  Your roster sheet (Google S
 
 **Step by step:**
 
-1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" or "Raid Time" row)
-2. Each player's lostark.bible roster page is scraped **once** up front — even when running `--all`, every player is fetched a single time
-3. For each target tab, the cached rosters are filtered by the iLvl threshold (and optional cap) — derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
+1. The tool reads the player list from **column A** of the target sheet tab (rows 3+, stops at the "Run" row)
+2. Each player's lostark.bible roster page is scraped **once** up front, even when running `--all`: every player is fetched a single time
+3. For each target tab, the cached rosters are filtered by the iLvl threshold (and optional cap), derived from the tab name (e.g. `Serca (1740+)` → 1740 minimum) or overridden in `config.json`
 4. Each player's eligible characters are sorted by iLvl descending, then combat power descending, capped at 6
-5. Results are written to columns B–G, one character per cell, formatted as:
+5. Results are written to columns B-G, one character per cell, formatted as:
    ```
    CharName | iLvl
    ClassName | CP
@@ -29,7 +29,8 @@ lostark.bible  →  scraper.py  →  sheets.py  →  Your roster sheet (Google S
 
 ## First-time setup
 
-**0. Create the virtual environment** — the launcher (`LostArk Bible Roster Updater.bat`)
+**0. Create the virtual environment.** Requires Python 3.11 or newer (CI tests 3.11, 3.12 and 3.13).
+The launcher (`LostArk Bible Roster Updater.bat`)
 hard-requires a venv at `.\venv`, so create it there (not `.venv`):
 ```
 python -m venv venv
@@ -41,12 +42,14 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
+To refresh an existing venv later, run `pip install --upgrade --upgrade-strategy eager -r requirements.txt`, then step 2 again if the Playwright pin changed. Packages removed from `requirements.txt` stay installed until you recreate the venv, which is harmless.
+
 **2. Install the browser (one-time, or after a Playwright update)**
 ```
 playwright install chromium
 ```
 
-**3. Set up Google API access** — the tool needs a service account key to read and write your Google Sheet. Follow these steps once:
+**3. Set up Google API access**: the tool needs a service account key to read and write your Google Sheet. Follow these steps once:
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project (any name)
 2. In the left menu go to **APIs & Services → Library**, search for and enable both:
@@ -55,13 +58,13 @@ playwright install chromium
 3. Go to **APIs & Services → Credentials**, click **Create Credentials → Service account**
    - Give it any name, click through the remaining steps, and hit **Done**
 4. Click your new service account in the list, go to the **Keys** tab, click **Add Key → Create new key → JSON**
-   - A `credentials.json` file will download — move it to the project root
+   - A `credentials.json` file will download; move it to the project root
 5. Open the JSON file and copy the `client_email` value (looks like `name@project.iam.gserviceaccount.com`)
-6. Open your Google Sheet, click **Share**, and share the spreadsheet with that email address — give it **Editor** access
+6. Open your Google Sheet, click **Share**, and share the spreadsheet with that email address and give it **Editor** access
 
 `credentials.json` is gitignored and never committed.
 
-**4. Create your config file** — copy `config.example.json` to `config.json` and edit the values to match your spreadsheet:
+**4. Create your config file**: copy `config.example.json` to `config.json` and edit the values to match your spreadsheet:
 
 ```
 copy config.example.json config.json
@@ -73,7 +76,7 @@ Set `spreadsheet_name` to your Google Sheet name, or set `spreadsheet_id` to ope
 
 ## Running the tool
 
-**Double-click** `LostArk Bible Roster Updater.bat` — opens PowerShell with the venv activated and shows help automatically.
+**Double-click** `LostArk Bible Roster Updater.bat`. It opens PowerShell with the venv activated and shows help automatically.
 
 Or from a terminal with the venv active:
 
@@ -95,17 +98,17 @@ python main.py --all
 
 ---
 
-## The Google Sheet — "Serca (1740+)" tab
+## The Google Sheet: "Serca (1740+)" tab
 
 ### Roster table (rows 3+)
 
-| Column A | Columns B–G |
+| Column A | Columns B-G |
 |----------|-------------|
 | Player name | Up to 6 eligible characters (one per cell) |
 
-- Column A is the source of truth for the player list — edit it directly to add/remove players
+- Column A is the source of truth for the player list; edit it directly to add/remove players
 - Player names must match exactly as they appear on lostark.bible
-- The tool stops reading column A at the run-planner marker: a cell that is "Run" or "Raid Time", or starts with "Run " or "Raid Time " (e.g. "Run Planner"), in any capitalization. Everything below it is never touched.
+- The tool stops reading column A at the run-planner marker: a cell that is "Run", or starts with "Run " (e.g. "Run Planner"), in any capitalization. Everything below it is never touched. Older tabs whose planner starts with "Raid Time" are also recognized.
 - Each player should appear only once in column A. If two rows hold the same name (even with different capitalization), the tool warns at the start of the run; duplicate rows can end up blanked or written with the wrong player's data, so remove the duplicate row.
 - If someone adds, removes or renames a row in a tab's column A while the tool is running, that tab is skipped and left untouched (so the run planner is never overwritten), and the tool exits nonzero. Re-run to update it.
 
@@ -113,32 +116,32 @@ python main.py --all
 
 Below the "Run" row, there are 6 run slots for scheduling raid groups within the week. Each slot has two rows:
 
-| Row | Columns B–I | Columns J–L |
+| Row | Columns B-I | Columns J-L |
 |-----|-------------|-------------|
 | Name row | Player names (or "Pug" for fill-ins) | Pug count / Supp status / Supp helper |
 | Char row | Characters being played | Discord paste formula |
 
 **Filling in a run:**
-1. Enter player names (or "Pug") in the name row (B–I)
+1. Enter player names (or "Pug") in the name row (B-I)
 2. Enter the character each person is playing in the char row directly below
 3. `J` (name row) auto-calculates how many DPS pugs are still needed
-4. `K` (name row) shows supp status — warns if over- or under-supplied
+4. `K` (name row) shows supp status and warns if over- or under-supplied
 5. `J` (char row) generates a Discord-ready paste with everyone's name and character
 
 ### 4-man raid checkbox (B15)
 
 The label **"4-man raid?"** in B14 and checkbox in **B15** control whether the run planner operates in 4-man or 8-man mode.
 
-- **Unchecked (default):** full 8-player mode — all columns B–I are active
-- **Checked:** 4-man mode — columns F–I are visually grayed out and automatically excluded from all calculations (pug count, supp count, Discord paste)
+- **Unchecked (default):** full 8-player mode, all columns B-I are active
+- **Checked:** 4-man mode, columns F-I are visually grayed out and automatically excluded from all calculations (pug count, supp count, Discord paste)
 
-You do not need to delete or hide columns when switching modes — just toggle the checkbox.
+You do not need to delete or hide columns when switching modes; just toggle the checkbox.
 
 ---
 
 ## Managing players
 
-Edit **column A** of the target tab directly (rows 3 and below, above the "Run" or "Raid Time" row). The tool reads this list fresh on every run. No code or config changes needed.
+Edit **column A** of the target tab directly (rows 3 and below, above the "Run" row). The tool reads this list fresh on every run. No code or config changes needed.
 
 ---
 
@@ -168,31 +171,31 @@ To override a threshold without renaming a tab, add an entry to `config.json`. T
 |------|--------|
 | `1750` (plain number) | Threshold = 1750, no cap |
 | `{ "threshold": 1750 }` | Same as above, object form |
-| `{ "threshold": 1730, "cap": 1739 }` | Threshold = 1730 **and** cap = 1739 — only characters with iLvl in [1730, 1739] are included |
+| `{ "threshold": 1730, "cap": 1739 }` | Threshold = 1730 **and** cap = 1739: only characters with iLvl in [1730, 1739] are included |
 
-The `cap` field is useful when a raid tier has both a hard floor and a ceiling — for example a "Hard" mode that only accepts characters who have not yet hit the next tier's minimum.
+The `cap` field is useful when a raid tier has both a hard floor and a ceiling, for example a "Hard" mode that only accepts characters who have not yet hit the next tier's minimum.
 
 ---
 
 ## Assumptions, scope & open questions
 
-> Unofficial community tool — not affiliated with or endorsed by lostark.bible, Smilegate, or Amazon Games.
+> Unofficial community tool, not affiliated with or endorsed by lostark.bible, Smilegate, or Amazon Games.
 
 ### Confirmed assumptions
 
-- **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing) — no JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
+- **Data source is lostark.bible's inline page data, not an API.** Each roster is read from the SvelteKit hydration payload embedded in an inline `<script>` tag on the player's roster page. `scraper.py` extracts the `roster: [ ... ]` array from the raw HTML in Python (a string-aware bracket scan, then converted for JSON parsing). No JS is executed, and the extraction is unit-tested against saved real pages. There is no public/documented API to call.
 - **Region is hard-coded to NA.** The scrape URL is `https://lostark.bible/character/NA/{name}/roster` (`scraper.py`). Region is *not* configurable.
-- **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" or "Raid Time" cell). Names must match how they appear on lostark.bible exactly.
+- **Player names come from the Google Sheet, not config.** The list is read live from column A of the target tab (rows 3+, stopping at the first "Run" cell). Names must match how they appear on lostark.bible exactly.
 - **`config.json` covers the sheet id/name, priority players, and iLvl threshold/cap**: `spreadsheet_id` (opens the sheet directly by key and takes precedence over the name), `spreadsheet_name`, `priority_players`, and per-tab `overrides`. A tab's threshold otherwise comes from its name (`Name (iLvl+)`).
 - **Auth is a Google service account.** `credentials.json` is a service-account key; the spreadsheet must be shared with that account's email as Editor. Scopes used are Sheets (read/write), plus Drive (read-only) only when opening by name.
-- **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A–G.
+- **Output shape is fixed:** up to 6 characters per player, each cell formatted as `Name | iLvl` / `Class | CP`, written to columns A-G.
 
 ### Open questions / known fragility
 
-- **KEY RISK — scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-scanning lostark.bible's inline hydration script. There is no versioned contract to depend on — treat this as the primary maintenance risk. Failure modes are at least distinct now: a page with no roster key reports "check the character name", while a roster that exists but cannot be parsed reports a scraper/site-layout problem.
+- **KEY RISK: scraping is brittle.** Extraction depends on string-matching `roster: [` and bracket-scanning lostark.bible's inline hydration script. There is no versioned contract to depend on, so treat this as the primary maintenance risk. Failure modes are at least distinct now: a page with no roster key reports "check the character name", while a roster that exists but cannot be parsed reports a scraper/site-layout problem.
 - **Class names map to a fixed set.** `class_map.py` translates KR internal class names to NA names for a known set of classes; a new or renamed class shows as `Unknown` until the map is updated.
 - **No region support beyond NA** (see above) without a code change.
-- **Bounded retry and politeness delay.** Each roster fetch is retried up to twice (2s then 5s backoff) on load errors and HTTP 429/500/502/503/504, with about a second's pause between players to stay polite to lostark.bible. A player whose fetch still fails keeps their existing sheet data, the run reports the failure, and the tool exits nonzero. Google Sheets reads and writes are retried up to three times (0s, 4s, then 8s backoff) on timeouts and HTTP 408/429/500/502/503/504, and each request times out after 10s to connect or 60s to respond; the cell color-formatting request is also retried up to three times.
+- **Bounded retry and politeness delay.** Each roster fetch is retried up to twice (2s then 5s backoff) on load errors and HTTP 429/500/502/503/504, with about a second's pause between players to stay polite to lostark.bible. A player whose fetch still fails keeps their existing sheet data, the run reports the failure, and the tool exits nonzero. Google Sheets reads and writes are retried up to three times (0s, 4s, then 8s backoff) on timeouts and HTTP 408/429/500/502/503/504, and each request times out after 10s to connect or 60s to respond; this includes the cell color-formatting request.
 - **Dependencies are version-pinned but not fully locked.** `requirements.txt` pins direct dependencies to known-good versions; transitive dependencies are not captured in a lockfile.
 
 ### Scope (out)
@@ -200,23 +203,23 @@ The `cap` field is useful when a raid tier has both a hard floor and a ceiling �
 - Regions other than NA.
 - Reading the player list from anywhere other than the sheet's column A.
 - A stable API client (none is published by lostark.bible).
-- Unattended scheduling/automation — the tool is run manually before each raid week.
-- The sheet's run-planner formulas and layout: the tool only writes the roster table (columns A-G); everything below the "Run" or "Raid Time" row is owned by the spreadsheet itself.
+- Unattended scheduling/automation: the tool is run manually before each raid week.
+- The sheet's run-planner formulas and layout: the tool only writes the roster table (columns A-G); everything below the "Run" row is owned by the spreadsheet itself.
 
 ---
 
 ## Project structure
 
 ```
-main.py               CLI entry point — owns auth, Playwright lifetime, orchestration
+main.py               CLI entry point: owns auth, Playwright lifetime, orchestration
 scraper.py            Roster scraping (takes a Page) + filter/sort/count logic
 sheets.py             Google Sheets read/write + rich text formatting
 class_map.py          KR internal class name → global NA class name (30 classes)
 config.py             config.json loader + tab name threshold parsing
 models.py             Character dataclass
 tests/                Unit tests
-config.example.json   Template config — copy to config.json and edit
+config.example.json   Template config; copy to config.json and edit
 config.json           Spreadsheet id/name, priority players, threshold overrides (gitignored)
 credentials.json      Google service account key (gitignored)
-LostArk Bible Roster Updater.bat   Windows launcher — opens PowerShell with venv activated
+LostArk Bible Roster Updater.bat   Windows launcher: opens PowerShell with venv activated
 ```

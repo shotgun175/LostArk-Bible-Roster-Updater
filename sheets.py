@@ -1,5 +1,4 @@
 """Google Sheets read/write for the Lost Ark roster updater."""
-from googleapiclient.discovery import Resource
 from gspread.utils import ValueInputOption
 
 from models import Character, MAX_CHARS_PER_PLAYER
@@ -44,12 +43,7 @@ def _text_format_runs(cell_text: str) -> list[dict]:
     ]
 
 
-def _apply_rich_text(
-    sheets_service: Resource,
-    spreadsheet_id: str,
-    sheet_id: int,
-    cell_positions: list[tuple[int, int, str]],
-) -> None:
+def _apply_rich_text(ws, cell_positions: list[tuple[int, int, str]]) -> None:
     """Apply per-character color formatting to a list of (row_0, col_0, text) cells."""
     requests = []
     for row_0, col_0, text in cell_positions:
@@ -62,14 +56,11 @@ def _apply_rich_text(
             "updateCells": {
                 "rows": [{"values": [{"textFormatRuns": runs}]}],
                 "fields": "textFormatRuns",
-                "start": {"sheetId": sheet_id, "rowIndex": row_0, "columnIndex": col_0},
+                "start": {"sheetId": ws.id, "rowIndex": row_0, "columnIndex": col_0},
             }
         })
     if requests:
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests},
-        ).execute(num_retries=3)  # this client does not use gspread's retrying session
+        ws.spreadsheet.batch_update({"requests": requests})
 
 
 def format_cell(character: Character) -> str:
@@ -115,10 +106,11 @@ def sort_players(
 def _is_run_marker(cell_text: str) -> bool:
     """True for the column-A cell that starts the hand-maintained run planner.
 
-    Matches "Run" or "Raid Time" exactly, or any cell starting with "Run " or
-    "Raid Time " ("Run Planner", "Run 1"), case-insensitive. Lost Ark
-    character names cannot contain spaces, so a real player ("Runeblade")
-    can never false-positive.
+    The marker is "Run", or any cell starting with "Run " ("Run Planner",
+    "Run 1"), case-insensitive. "Raid Time" (exact, or followed by a space)
+    is also accepted, but only as a legacy fallback for older tabs; new tabs
+    use "Run". Lost Ark character names cannot contain spaces, so a real
+    player ("Runeblade") can never false-positive.
     """
     lowered = cell_text.strip().lower()
     return lowered in ("run", "raid time") or lowered.startswith(("run ", "raid time "))
@@ -176,12 +168,10 @@ def read_tab(worksheet) -> tuple[list[tuple[int, str]], dict[str, list[str]]]:
 
 def rewrite_sheet_sorted(
     ws,
-    spreadsheet_id: str,
     player_eligibility: dict[str, list[Character] | None],
     ordered_players: list[str],
     player_rows: list[tuple[int, str]],
     existing: dict[str, list[str]],
-    sheets_service: Resource,
 ) -> None:
     """Rewrite columns A-G for all players in the given order.
 
@@ -223,15 +213,13 @@ def rewrite_sheet_sorted(
         for j, text in enumerate(row[1:])
         if text
     ]
-    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)
+    _apply_rich_text(ws, rich_text_cells)
 
 
 def update_player_rows(
     ws,
-    spreadsheet_id: str,
     player_eligibility: dict[str, list[Character] | None],
     player_rows: list[tuple[int, str]],
-    sheets_service: Resource,
 ) -> None:
     """Update only B-G for the players in player_eligibility, preserving sheet order.
 
@@ -267,4 +255,4 @@ def update_player_rows(
     # switch to USER_ENTERED without sanitizing leading = + @.
     ws.batch_update(cell_updates, value_input_option=ValueInputOption.raw)
 
-    _apply_rich_text(sheets_service, spreadsheet_id, ws.id, rich_text_cells)
+    _apply_rich_text(ws, rich_text_cells)

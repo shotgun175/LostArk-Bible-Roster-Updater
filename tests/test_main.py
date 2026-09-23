@@ -42,7 +42,7 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch, echo_read_tab):
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: rewrites.append(
+        lambda ws, eligibility, ordered, player_rows, existing: rewrites.append(
             (ws, sorted(eligibility.keys()))
         ),
     )
@@ -50,8 +50,6 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch, echo_read_tab):
     ws_hard, ws_soft = MagicMock(), MagicMock()
     main.run_update(
         page=None,
-        sheets_service=MagicMock(),
-        spreadsheet_id="sid",
         tabs=echo_read_tab({
             "Hard (1700+)": (ws_hard, [(3, "Alice"), (4, "Bob")], {}),
             "Soft (1750+)": (ws_soft, [(3, "Bob"), (4, "Carol")], {}),
@@ -70,7 +68,7 @@ def test_run_update_uses_each_tabs_own_player_list(monkeypatch, echo_read_tab):
 
 def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch, echo_read_tab):
     """A tab whose column A is empty must not be back-filled with the union
-    list — the rewrite should receive an empty eligibility and no-op."""
+    list; the rewrite should receive an empty eligibility and no-op."""
     monkeypatch.setattr(main, "scrape_roster", lambda page, name: [make_char("A1", 1760)])
     monkeypatch.setattr(main.time, "sleep", lambda s: None)
 
@@ -78,7 +76,7 @@ def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch, echo_read
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: rewrites.append(
+        lambda ws, eligibility, ordered, player_rows, existing: rewrites.append(
             (ws, sorted(eligibility.keys()))
         ),
     )
@@ -86,8 +84,6 @@ def test_run_update_leaves_a_deliberately_empty_tab_empty(monkeypatch, echo_read
     ws_hard, ws_empty = MagicMock(), MagicMock()
     main.run_update(
         page=None,
-        sheets_service=MagicMock(),
-        spreadsheet_id="sid",
         tabs=echo_read_tab({
             "Hard (1700+)": (ws_hard, [(3, "Alice"), (4, "Bob")], {}),
             "Empty (1750+)": (ws_empty, [], {}),
@@ -111,7 +107,7 @@ def test_sheet_mode_with_one_player_still_uses_full_rewrite(monkeypatch, echo_re
     monkeypatch.setattr(main, "update_player_rows", lambda *a, **k: calls.append("update"))
 
     main.run_update(
-        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        page=None,
         tabs=echo_read_tab({"Hard (1700+)": (MagicMock(), [(3, "Alice")], {})}),
         player_names=["Alice"], overrides={}, priority_players=[],
         single_player=False,
@@ -126,7 +122,7 @@ def test_single_player_mode_only_updates_b_to_g(monkeypatch, echo_read_tab):
     monkeypatch.setattr(main, "update_player_rows", lambda *a, **k: calls.append("update"))
 
     main.run_update(
-        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        page=None,
         tabs=echo_read_tab({
             "Hard (1700+)": (MagicMock(), [(3, "Alice"), (4, "Bob")], {}),
             "Soft (1750+)": (MagicMock(), [(3, "Bob"), (4, "Alice")], {}),
@@ -179,15 +175,13 @@ def test_failed_scrape_becomes_none_sentinel_and_is_reported(monkeypatch, echo_r
     monkeypatch.setattr(
         main,
         "rewrite_sheet_sorted",
-        lambda ws, sid, eligibility, ordered, player_rows, existing, svc: received.append(
+        lambda ws, eligibility, ordered, player_rows, existing: received.append(
             eligibility
         ),
     )
 
     failed, skipped = main.run_update(
         page=None,
-        sheets_service=MagicMock(),
-        spreadsheet_id="sid",
         tabs=echo_read_tab({"Hard (1700+)": (MagicMock(), [(3, "Alice"), (4, "Bob")], {})}),
         player_names=["Alice", "Bob"],
         overrides={},
@@ -218,7 +212,7 @@ def test_run_update_reads_each_worksheet_exactly_once(monkeypatch):
     monkeypatch.setattr(main, "update_player_rows", lambda ws, *a, **k: writes.append(ws))
     hard, soft = object(), object()
     main.run_update(
-        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        page=None,
         tabs={
             "Hard (1700+)": (hard, [(3, "Alice")], {}),
             "Soft (1750+)": (soft, [(3, "Alice")], {}),
@@ -247,7 +241,7 @@ def test_changed_column_a_skips_the_tab(monkeypatch, capsys, single_player):
     monkeypatch.setattr(main, "update_player_rows", lambda ws, *a, **k: writes.append(ws))
 
     failed, skipped = main.run_update(
-        page=None, sheets_service=MagicMock(), spreadsheet_id="sid",
+        page=None,
         tabs={
             "Hard (1700+)": (ws_changed, [(3, "Alice"), (4, "Bob"), (5, "Carol")], {}),
             "Soft (1750+)": (ws_same, [(3, "Alice")], {}),

@@ -60,7 +60,7 @@ def test_void_0_fields_map_to_null():
 
 
 def test_escaped_quotes_inside_strings_are_honored():
-    # HTML carries name:"a\"[b]" — the escaped quote must not end the string
+    # HTML carries name:"a\"[b]"; the escaped quote must not end the string
     # early (which would let the [b] miscount the depth).
     html = '<script>var d = { roster:[{name:"a\\"[b]",ilvl:1700}] };</script>'
     entries = extract_roster_json(html)

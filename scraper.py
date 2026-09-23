@@ -222,6 +222,16 @@ def _goto_with_retry(page: Page, url: str):
     raise last_exc
 
 
+def lookup_name(character_name: str) -> str:
+    """The name as the game spells it: one capital, the first letter.
+
+    Lost Ark only lets a name capitalize its first letter (accents and other
+    special characters are kept as typed), so column A capitalization is
+    irrelevant to which character is meant.
+    """
+    return character_name[:1].upper() + character_name[1:].lower()
+
+
 def scrape_roster(page: Page, character_name: str) -> list[Character]:
     """
     Scrape full roster from lostark.bible for the given character name.
@@ -229,10 +239,14 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
     Raises RuntimeError on timeout, load error, or a non-404 HTTP error
     status (caller preserves sheet data).
 
+    The name is looked up as the game spells it (see lookup_name); messages
+    keep the sheet's spelling so the operator can find the row.
+
     Caller owns the Playwright Page lifecycle so a single browser can be
     reused across many scrapes.
     """
-    url = BASE_URL.format(quote(character_name, safe=""))
+    lookup = lookup_name(character_name)
+    url = BASE_URL.format(quote(lookup, safe=""))
     try:
         response = _goto_with_retry(page, url)
 
@@ -265,9 +279,11 @@ def scrape_roster(page: Page, character_name: str) -> list[Character]:
 
         if not roster_entries:
             # A wrong-case name redirects to the canonical overview page.
+            # lookup_name already applies the game's one-capital rule, so
+            # this only fires for a site spelling that rule does not produce.
             m = re.search(r"/character/NA/([^/?#]+)$", (response.url if response else "") or "")
             canonical = unquote(m.group(1)) if m else ""
-            if canonical != character_name and canonical.lower() == character_name.lower():
+            if canonical != lookup and canonical.lower() == lookup.lower():
                 raise RuntimeError(
                     f"Error: Could not find roster for '{character_name}' - "
                     f"lostark.bible spells this character '{canonical}'; fix "

@@ -18,6 +18,7 @@ from scraper import (
     count_eligible,
     filter_and_sort,
     install_resource_blocking,
+    lookup_name,
     scrape_roster,
 )
 from sheets import (
@@ -104,7 +105,9 @@ def _scrape_all_rosters(
     """
     rosters: dict[str, list[Character] | None] = {}
     for i, name in enumerate(player_names):
-        print(f"Scraping {name}...", flush=True, end=" ")
+        lookup = lookup_name(name)
+        shown = name if lookup == name else f"{name} (as {lookup})"
+        print(f"Scraping {shown}...", flush=True, end=" ")
         try:
             chars = scrape_roster(page, name)
             print(f"{len(chars)} characters found")

@@ -1,0 +1,24 @@
+# Monthly grouped version updates, with a 7-day cooldown so brand-new releases settle
+# first. Security fixes do not wait for this schedule: they open right away via the
+# repo settings (Dependabot alerts + security updates).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      pip-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

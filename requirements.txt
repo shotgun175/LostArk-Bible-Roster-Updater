@@ -1,6 +1,6 @@
-playwright==1.63.0
+playwright==1.64.1
 gspread==6.2.1
-google-auth==2.59.1
+google-auth==2.62.0
 pytest==9.1.1
 # Imported directly by main.py (HTTPAdapter + Retry on the gspread session), so pinned here
 # instead of relying on the transitive chain through google-auth-oauthlib.
